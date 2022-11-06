@@ -25,4 +25,4 @@ An example graph *NY* and corresponding partition results of `PUNCH` with 64 par
 
 `g++` and `boost`.
 
-All the codes are runnable after cmake.
+All the codes are runnable after cmake and make: go to corresponding directory and `cmake -DCMAKE_BUILD_TYPE=Release ./`, `make -j`.
