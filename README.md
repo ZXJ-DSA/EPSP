@@ -11,7 +11,7 @@ The following directory contains the implementation code of index construction, 
 1. CT: CT-DS and CT-TD.
 1. HP-DS: HP-DS.
 
-All above methods can be directly run on the example graph *NY*.
+All above methods can be directly run on the example graph *NY*, by using source path `../data`.
 
 ## Data
 An example graph *NY* and corresponding partition results of `PUNCH` with 64 partitions is provided in directory *data* for your reference.
@@ -23,6 +23,7 @@ An example graph *NY* and corresponding partition results of `PUNCH` with 64 par
 
 ## Dependency
 
-`g++` and `boost`.
+1. `g++` and `boost`
+1. `METIS` (for HP-DS).
 
-All the codes are runnable after cmake and make: go to corresponding directory and `cmake -DCMAKE_BUILD_TYPE=Release ./`, `make -j`.
+All the codes are runnable after cmake and make: go to corresponding directory, `cmake -DCMAKE_BUILD_TYPE=Release ./` and `make -j`.
