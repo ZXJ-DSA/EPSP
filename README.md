@@ -11,7 +11,7 @@ The following directory contains the implementation code of index construction, 
 1. CT-CH: which is equal to U-Core.
 1. HP-TD: which is equal to UQ-Hierarchy.
 
-All above methods can be directly run on the example graph *NY*, by using source path `../data`.
+P-TD, P-CH and HP-TD can be directly run on the example graph *NY* while CT-TD, CT-CH can be run on *GO*, by using source path `../data`.
 
 ## Data
 An example graph *NY* and corresponding partition results of `PUNCH` with 64 partitions is provided in directory *data* for your reference.
