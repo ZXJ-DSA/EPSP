@@ -15,7 +15,7 @@ endif ()
 
 add_definitions(-w) # omit warning information
 
-add_executable(P-TD main.cpp index.cpp read.cpp update.cpp)
+add_executable(P-TD main.cpp PostBoundary.cpp index.cpp read.cpp update.cpp)
 
 add_executable(P-TDP mainPost.cpp PostBoundary.cpp update.cpp index.cpp read.cpp)
 

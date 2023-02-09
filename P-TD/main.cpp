@@ -79,6 +79,10 @@ int main(int argc, char** argv){
 
     Timer tt;
 
+    //for pre-boundary
+//    g.PreBoundaryCompute(true);
+//    exit(0);
+
     /// Task1: Index construction
     tt.start();
     cout<<"Index construction test..."<<endl;
@@ -177,7 +181,7 @@ int main(int argc, char** argv){
 
     g.EffiCheck();///Query distribution test
     cout<<"-----------"<<endl;
-
+//    exit(0);
     ///Task3: Index update
     cout<<"Index update test..."<<endl;
     // read updates
@@ -218,7 +222,7 @@ int main(int argc, char** argv){
             time_span1 = std::chrono::duration_cast<std::chrono::duration<double>>(t11-t10);
             runT1= time_span1.count();
             cout<<"Average Decrease update Time: "<<runT1/updateBatch<<" s."<<endl;
-//            break;
+            break;
         }
         case 1:{
             //Increase update

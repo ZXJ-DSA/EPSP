@@ -236,3 +236,126 @@ void Graph::IndexsizePost(){
 		m+=VidtoTNidOverlay[i].size()*sizeof(int);
 	cout<<"Index size "<<(double)m/1024/1024<<" MB"<<endl;
 }
+
+vector<int> Graph::dijkstra_candidate( int s, vector<int> &cands, vector<vector<pair<int,int>>> &graph ){
+    // init
+    set<int> todo;
+    todo.clear();
+    todo.insert(cands.begin(), cands.end());//get the partition vertex set
+
+    unordered_map<int,int> result;
+    result.clear();
+    set<int> visited;
+    visited.clear();
+//    unordered_map<int,int> q;//map used for mapping vertex id to its distance from source vertex
+    benchmark::heap<2, int, int> q(nodenum);
+//    vector<bool> closed(node_num, false); //flag vector of whether closed
+    vector<int> cost(nodenum, INF);   //vector of cost
+    int temp_dis;
+    q.clear();
+    q.update(s,0);
+    cost[s] = 0;
+//    q[s] = 0;//map of source vertex
+
+    // start
+    int min, minpos, adjnode, weight;
+    while( ! todo.empty() && ! q.empty() ){
+        min = -1;
+        q.extract_min(minpos,min);
+
+        // put min to result, add to visited
+        result[minpos] = min;
+        visited.insert( minpos );
+//        q.erase(minpos);
+
+        if ( todo.find( minpos ) != todo.end() ){//if found, erase visited vertex
+            todo.erase( minpos );
+        }
+
+        // expand on graph (the original graph)
+        for ( int i = 0; i < graph[minpos].size(); i++ ){
+            adjnode = graph[minpos][i].first;
+            if ( visited.find( adjnode ) != visited.end() ){//if found, ie, it is visited
+                continue;
+            }
+            weight = graph[minpos][i].second;//edge weight
+            temp_dis = min + weight;
+            if ( temp_dis < cost[adjnode] ){
+                q.update(adjnode,temp_dis);
+                cost[adjnode] = temp_dis;
+            }
+
+        }
+    }
+
+    // output
+    vector<int> output;
+    for ( int i = 0; i < cands.size(); i++ ){
+        output.push_back( result[cands[i]] );//only push the distance result of vertex in cands
+    }
+
+    // return
+    return output;//vector of distance matrix values
+}
+
+void Graph::PreBoundaryCompute(bool ifParallel){
+    vector<int> cands;
+    vector<int> result;
+    unordered_map<int, unordered_map<int,int> > vertex_pairs;//result of distance matrix
+    map<int,map<int,int>> boundaryMatrix;
+    int ID;
+    Timer tt;
+    tt.start();
+    int partiNum = BoundVer.size();
+
+    if(ifParallel){/// multi-thread
+
+        if(partiNum>threadnum){
+            int step=partiNum/threadnum;
+            boost::thread_group threadf;
+            for(int i=0;i<threadnum;i++){
+                pair<int,int> p;
+                p.first=i*step;
+                if(i==threadnum-1)
+                    p.second=partiNum;
+                else
+                    p.second=(i+1)*step;
+                threadf.add_thread(new boost::thread(&Graph::preBoundaryPair, this, p));
+            }
+            threadf.join_all();
+        }else{
+            boost::thread_group threadf;
+            for(int pid=0;pid<partiNum;++pid) {
+                threadf.add_thread(new boost::thread(&Graph::preBoundaryPair, this, make_pair(pid,pid+1)));
+            }
+            threadf.join_all();
+        }
+
+    }
+    else {/// single thread
+        for (int i = 0; i < BoundVer.size(); ++i) {
+            cands = BoundVer[i];
+            for (int j = 0; j < BoundVer[i].size(); ++j) {
+                ID = BoundVer[i][j];
+                result = dijkstra_candidate(BoundVer[i][j], cands, Neighbors);//distance vector from s to all borders
+            }
+
+        }
+    }
+    tt.stop();
+    cout<<"!!! The time for pre-boundary computation: "<<tt.GetRuntime()<<" s."<<endl;
+}
+
+void Graph::preBoundaryPair(pair<int,int> p){
+    vector<int> cands;
+    vector<int> result;
+    int ID;
+
+    for(int pid=p.first;pid<p.second;++pid){
+        cands = BoundVer[pid];
+        for (int j = 0; j < BoundVer[pid].size(); ++j) {
+            ID = BoundVer[pid][j];
+            result = dijkstra_candidate(BoundVer[pid][j], cands, Neighbors);//distance vector from s to all borders
+        }
+    }
+}

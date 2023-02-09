@@ -212,6 +212,11 @@ public:
     void EffiCheckPost1();
     void IndexsizePost();
 
+    //Pre boundary
+    vector<int> dijkstra_candidate( int s, vector<int> &cands, vector<vector<pair<int,int>>> &graph );
+    void PreBoundaryCompute(bool ifParallel);
+    void preBoundaryPair(pair<int,int> p);
+
 };
 
 namespace benchmark {
