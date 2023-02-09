@@ -1,5 +1,5 @@
 ## Introduction
-This is the source code of the VLDB 2023 paper "*Decoupling Dynamic Shortest Distance and Graph Partition*" (submitted). Please refer to the paper for the algorithm details.
+This is the source code of the SIGMOD 2024 paper "*A Universal Scheme for Partitioned Dynamic Shortest Path Index*" (submitted). Please refer to the paper for the algorithm details.
 
 ## Algorithms
 
