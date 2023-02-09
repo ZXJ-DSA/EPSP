@@ -5,25 +5,24 @@ This is the source code of the SIGMOD 2024 paper "*A Universal Scheme for Partit
 
 The following directory contains the implementation code of index construction, query processing, and index update of corresponding algorithms.
 
-1. P-TD: P-TD and P-TD(Post).
-1. P-CH: P-CH and P-CH(Post).
-1. P-PLL: P-PLL and P-PLL(Post).
-1. CT: CT-DS and CT-TD.
-1. HP-DS: HP-DS.
+1. P-TD: P-TD and P-TD(Post), where P-TD(Post) is equal to Q-Planar while P-TD is equal to FHL.
+1. P-CH: P-CH, which is equal to U-Planar.
+1. CT-TD: which is equal to Q-Core.
+1. CT-CH: which is equal to U-Core.
+1. HP-TD: which is equal to UQ-Hierarchy.
 
 All above methods can be directly run on the example graph *NY*, by using source path `../data`.
 
 ## Data
 An example graph *NY* and corresponding partition results of `PUNCH` with 64 partitions is provided in directory *data* for your reference.
 
-1. To implement P-TD, P-CH, and P-PLL, you need to generate the partition results (`subgraph_edge`, `subgraph_vertex`, `cut_edges`) and corresponding vertex order file `vertex_order`.
-1. To implement CT-DS, CT-TD, you need to generate the vertex order of the whole graph, i.e., `NY.order`.
+1. To implement P-TD and P-CH, you need to generate the partition results (`subgraph_edge`, `subgraph_vertex`, `cut_edges`) and corresponding vertex order file `vertex_order`.
 2. Query OD pair `NY.query` and update OD pair `NY.update` are also needed.
 
 
 ## Dependency
 
 1. `g++` and `boost`
-1. `METIS` (for HP-DS).
+1. `METIS` (for HP-TD).
 
 All the codes are runnable after cmake and make: go to corresponding directory, `cmake -DCMAKE_BUILD_TYPE=Release ./` and `make -j`.
