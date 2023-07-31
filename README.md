@@ -1,5 +1,5 @@
 ## Introduction
-This is the source code of the SIGMOD 2024 paper "*A Universal Scheme for Partitioned Dynamic Shortest Path Index*" (submitted). Please refer to the paper for the algorithm details.
+This is the source code of the ICDE 2024 paper "*A Universal Scheme for Partitioned Dynamic Shortest Path Index*" (submitted). Please refer to the paper for the algorithm details.
 
 ## Algorithms
 
@@ -14,7 +14,7 @@ The following directory contains the implementation code of index construction, 
 P-TD, P-CH and HP-TD can be directly run on the example graph *NY* while CT-TD, CT-CH can be run on *GO*, by using source path `../data`.
 
 ## Data
-An example graph *NY* and corresponding partition results of `PUNCH` with 64 partitions is provided in directory *data* for your reference.
+An example graph *NY* and corresponding partition results of `PUNCH` with 64 partitions is provided in the directory *data* for your reference.
 
 1. To implement P-TD and P-CH, you need to generate the partition results (`subgraph_edge`, `subgraph_vertex`, `cut_edges`) and corresponding vertex order file `vertex_order`.
 2. Query OD pair `NY.query` and update OD pair `NY.update` are also needed.
@@ -25,4 +25,4 @@ An example graph *NY* and corresponding partition results of `PUNCH` with 64 par
 1. `g++` and `boost`
 1. `METIS` (for HP-TD).
 
-All the codes are runnable after cmake and make: go to corresponding directory, `cmake -DCMAKE_BUILD_TYPE=Release ./` and `make -j`.
+All the codes are runnable after `cmake` and `make`: go to the corresponding directory, `cmake -DCMAKE_BUILD_TYPE=Release ./` and `make -j`.
