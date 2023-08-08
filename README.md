@@ -14,6 +14,8 @@ The following directory contains the implementation code of index construction, 
 P-TD, P-CH and HP-TD can be directly run on the example graph *NY* while CT-TD, CT-CH can be run on *GO*, by using source path `../data`.
 
 ## Data
+The datasets of this paper source from [http://www.dis.uniroma1.it/challenge9/download.shtml](http://www.dis.uniroma1.it/challenge9/download.shtml), [http://snap.stanford.edu/data](http://snap.stanford.edu/data), and [http://konect.cc/](http://konect.cc/). Please refer to the paper for details.
+
 An example graph *NY* and corresponding partition results of `PUNCH` with 64 partitions is provided in the directory *data* for your reference.
 
 1. To implement P-TD and P-CH, you need to generate the partition results (`subgraph_edge`, `subgraph_vertex`, `cut_edges`) and corresponding vertex order file `vertex_order`.
