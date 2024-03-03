@@ -13,9 +13,9 @@ vector<int> NodeOrders;
 
 //// For CH index construction
 void Graph::CHIndexConstruct(){
-    string orderfile=graphfile+".order";
+    string orderfile=orderPath;
 //    orderfile="/home/data/xzhouby/datasets/"+dataset+"/"+dataset+"_NC_16/vertex_orderMDE2";
-    orderfile=graphfile+"_NC_32/vertex_orderMDE2";
+//    orderfile=sourcePath+dataset+"_NC_32/vertex_orderMDE2";
     double runT1=0, runT2=0, runT3=0;
     Timer tt;
 
@@ -50,9 +50,9 @@ void Graph::IndexsizeCHWP(){
 }
 
 void Graph::H2HIndexConstruct() {
-    string orderfile=graphfile+".order";
+    string orderfile=orderPath;
 //    orderfile="/home/data/xzhouby/datasets/"+dataset+"/"+dataset+"_NC_16/vertex_orderMDE2";
-    orderfile=graphfile+"_NC_32/vertex_orderMDE2";
+//    orderfile=sourcePath+dataset+"_NC_32/vertex_orderMDE2";
     double runT1=0, runT2=0, runT3=0;
     Timer tt;
 

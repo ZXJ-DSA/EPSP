@@ -196,7 +196,7 @@ struct Node{//tree node
 
 class Graph{
 public:
-    string graphfile;
+    string sourcePath;
     string dataset;
 	int node_num=0;    //vertex number
 	unsigned long long edge_num=0;    //edge number

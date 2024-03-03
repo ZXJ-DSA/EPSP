@@ -21,18 +21,18 @@ void Graph::IndexConstruction(){
         PPLLIndexConstruct(PSPStrategy);
     }else if(algoChoice==Dijk){
         cout<<"Index-free search."<<endl;
-        ReadGraph(graphfile);//
+        ReadGraph(sourcePath+dataset);//
     }
 }
 //function of hybrid multi-stage SP index construction
 void Graph::HybridSPIndexConstruct(){
-    string orderfile=graphfile+".order";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
+    string orderfile=sourcePath+dataset+".order";
+    orderfile=sourcePath+dataset+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
 
     double runT1=0, runT2=0, runT3=0;
     Timer tt;
 
-    ReadGraph(graphfile);//
+    ReadGraph(sourcePath+dataset);//
 
     tt.start();
     MDEContraction(orderfile);
@@ -505,11 +505,10 @@ void Graph::PCHIndexConstruct(int strategy) {
     runT1=0, runT2=0, runT3=0, runT4=0, runT5=0;
 
     /// Read order and partitions
-    string orderfile=graphfile+".orderP";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_order";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
-//    orderfile=graphfile+".order";
+    string partitionfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
+
+    string orderfile=partitionfile+"/vertex_orderMDE2";
+//    orderfile=sourcePath+dataset+".order";
 //#ifdef __APPLE__
 ////    cout<<"The platform is macOS."<<endl;
 //#else
@@ -517,7 +516,7 @@ void Graph::PCHIndexConstruct(int strategy) {
 //#endif
     ReadOrder(orderfile);
 
-    string partitionfile=graphfile+"_"+algoParti+"_"+to_string(partiNum);
+
     GraphPartitionRead(partitionfile);//read partitions
 
 //    vSm.reserve(node_num);
@@ -547,7 +546,7 @@ void Graph::PCHIndexConstruct(int strategy) {
         /// Overlay index construction
         tt.start();
 //    Construct_core(algoCoreC);
-//    WriteCoreIndex(graphfile);
+//    WriteCoreIndex(sourcePath+dataset);
         Construct_OverlayIndex(false);
         tt.stop();
         runT3 = tt.GetRuntime();
@@ -614,10 +613,9 @@ void Graph::PH2HIndexConstruct(int strategy) {
     runT1=0, runT2=0, runT3=0, runT4=0, runT5=0;
 
     /// Read order and partitions
-    string orderfile=graphfile+".orderP";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_order";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
+    string partitionfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
+
+    string orderfile=partitionfile+"/vertex_orderMDE2";
 //#ifdef __APPLE__
 ////    cout<<"The platform is macOS."<<endl;
 //#else
@@ -625,7 +623,7 @@ void Graph::PH2HIndexConstruct(int strategy) {
 //#endif
     ReadOrder(orderfile);
 
-    string partitionfile=graphfile+"_"+algoParti+"_"+to_string(partiNum);
+
     GraphPartitionRead(partitionfile);//read partitions
 
 //    vSm.reserve(node_num);
@@ -721,10 +719,9 @@ void Graph::PPLLIndexConstruct(int strategy) {
     runT1=0, runT2=0, runT3=0, runT4=0, runT5=0;
 
     /// Read order and partitions
-    string orderfile=graphfile+".order";
-//    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_order";
-//    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE";
-//    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
+    string partitionfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
+
+    string orderfile=partitionfile+"/vertex_orderMDE2";
 //#ifdef __APPLE__
 ////    cout<<"The platform is macOS."<<endl;
 //#else
@@ -732,7 +729,7 @@ void Graph::PPLLIndexConstruct(int strategy) {
 //#endif
     ReadOrder(orderfile);
 
-    string partitionfile=graphfile+"_"+algoParti+"_"+to_string(partiNum);
+
     GraphPartitionRead(partitionfile);//read partitions
 
     vSm.reserve(node_num);
@@ -959,7 +956,7 @@ void Graph::IndexSizePPLL(){
 }
 
 void Graph::PH2HVertexOrdering(int type){
-    ReadGraph(graphfile);
+    ReadGraph(sourcePath+dataset);
     int pNum=partiNum;
 
 //#ifdef __APPLE__
@@ -1010,7 +1007,7 @@ void Graph::PH2HVertexOrdering(int type){
     exit(0);
 }
 void Graph::OrderingAssemblyMDEBoundaryFirst(int pNum){
-    string filename=graphfile+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE2";
+    string filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE2";
 //#ifdef __APPLE__
 ////    cout<<"The platform is macOS."<<endl;
 //#else
@@ -1088,7 +1085,7 @@ void Graph::OrderingAssemblyMDEBoundaryFirst(int pNum){
 }
 //function of MDE ordering assemblying
 void Graph::OrderingAssemblyMDE(int pNum){
-    string filename=graphfile+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE";
+    string filename=sourcePath+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE";
 
     ofstream OF(filename,ios::out);
     if(!OF.is_open()){
@@ -1127,7 +1124,7 @@ void Graph::OrderingAssemblyMDE(int pNum){
 }
 //function of boundary-first assemblying
 void Graph::OrderingAssemblyBoundaryFirst(int pNum){
-    string orderfile=graphfile+"_"+algoParti+"_"+to_string(pNum)+"/vertex_order2";
+    string orderfile=sourcePath+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_order2";
     set<int> vcheck;//use to check the redundant ordered vertex
     vcheck.clear();
     vNodeOrder.clear();
@@ -1275,7 +1272,7 @@ void Graph::SketchGraphBuild(){
 
     bool flag_minus = false;
 
-    string filename=graphfile+"_"+algoParti+"_"+to_string(partiNum);
+    string filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
     ifstream IF1(filename+"/subgraph_vertex");
     if(!IF1){
         cout<<"Cannot open file "<<"subgraph_vertex"<<endl;
@@ -1287,9 +1284,6 @@ void Graph::SketchGraphBuild(){
     if(algoParti == "NC"){
 //        flag_minus = true;
         partiNum = pnum2;
-    }else if(algoParti == "SC" || algoParti == "MT"){
-//        flag_minus = true;
-//        pnum2 = pnum;
     }
     cout<<"Partition number: "<<pnum2<<endl;
 
@@ -2211,7 +2205,7 @@ void Graph::DFSTree(vector<int>& tNodes, int id){
 void Graph::IndexMaintenance(int updateType, int updateSize) {
     cout<<"Shortest path query throughput test..."<<endl;
     // read updates
-    string file = graphfile + ".update";
+    string file = sourcePath+dataset + ".update";
     bool ifDebug=false;
 //    ifDebug=true;
     vector<pair<pair<int,int>,pair<int,int>>> wBatch;
@@ -2222,8 +2216,8 @@ void Graph::IndexMaintenance(int updateType, int updateSize) {
 
     cout<<"Update Number: "<<updateSize<<endl;
 
-    string queryF = graphfile + ".query";
-//    filename = graphfile + ".queryParti";
+    string queryF = sourcePath+dataset + ".query";
+//    filename = sourcePath+dataset + ".queryParti";
     ifstream IF(queryF);
     if(!IF){
         cout<<"Cannot open file "<<queryF<<endl;

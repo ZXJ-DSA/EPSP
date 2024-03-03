@@ -8,7 +8,7 @@
 
 int main(int argc, char** argv){
 
-    if( argc < 3 || argc > 9){//
+    if( argc < 3 || argc > 10){//
         printf("usage:\n<arg1> source path, e.g. /export/project/xzhouby\n");
         printf("<arg2> name of dataset, e.g. NY\n");
         printf("<arg3> algorithm, 0:Dijkstra; 1: CH; 2: H2H; 3: PLL. e.g. 1\n");
@@ -17,11 +17,13 @@ int main(int argc, char** argv){
         printf("<arg6> (optional) batch number, default: 1000\n");
         printf("<arg7> (optional) batch size, default: 1\n");
         printf("<arg8> (optional) thread number, default: 15\n");
+        printf("<arg9> (optional) order file path\n");
         exit(0);
     }
 
     string DesFile="./data/";
     string dataset = "NY";
+    string orderPath="";
 
     int algorithm = 2;
     int updateType = 0;
@@ -64,6 +66,10 @@ int main(int argc, char** argv){
             cout << "argv[8] (Thread Number): " << argv[8] << endl;//thread number
             threadNum = stoi(argv[8]);
         }
+        if(argc > 9){
+            cout << "argv[9] (Thread Number): " << argv[9] << endl;//order file path
+            orderPath = argv[9];
+        }
     }
 
 
@@ -72,15 +78,20 @@ int main(int argc, char** argv){
     tt0.start();
 
 //    string graphfile="/media/TraminerData/mengxuan/MengxuanGraphWPSL/Cond/CondWeighted";
-    string graphfile=DesFile+"/"+dataset+"/"+dataset;
-    string ODfile=graphfile+".query";
-    string updateFile=graphfile+".update";
+    string sourcePath=DesFile+"/"+dataset+"/";
+    string ODfile=sourcePath+dataset+".query";
+    string updateFile=sourcePath+dataset+".update";
 
     Graph g;
     g.dataset=dataset;
     g.threadnum=threadNum;
-    g.graphfile=graphfile;
+    g.sourcePath=sourcePath;
     g.algoIndex=algorithm;
+    if(argc>9){
+        g.orderPath=orderPath;
+    }else{
+        g.orderPath=sourcePath+dataset+".order";
+    }
     cout<<"Dataset: "<<dataset<<endl;
     cout<<"Thread number: "<<threadNum<<endl;
     if(ifBatch){
@@ -91,7 +102,7 @@ int main(int argc, char** argv){
     }
 
 
-    g.ReadGraph(graphfile);//
+    g.ReadGraph(sourcePath+dataset);//
 //    g.StainingMethod(0);
 
     ///Task 1: Index construction

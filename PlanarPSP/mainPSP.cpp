@@ -14,7 +14,7 @@ int main(int argc, char** argv){
         printf("<arg2> name of dataset, e.g. NY\n");
         printf("<arg3> shortest path index, 1: CH; 2: H2H; 3: PLL. default: 2\n");
         printf("<arg4> (optional) partitioned shortest path strategy, 1: Pre-boundary; 2: No-boundary; 3: Post-boundary. default: 2\n");
-        printf("<arg5> (optional) partition method, (NC: PUNCH; MT: METIS), default: NC\n");
+        printf("<arg5> (optional) partition method, (NC: PUNCH; MT: METIS; SC: SCOTCH; kahypar: KaHyPar; geometric: RCB; Bubble: Bubble; HEP: HEP; CLUGP: CLUGP), default: NC\n");
         printf("<arg6> (optional) partition number, e.g. 64\n");
         printf("<arg7> (optional) update type, (0: No Update Test; 1: Decrease; 2: Increase), default: 0\n");
         printf("<arg8> (optional) update number, default: 100\n");
@@ -93,13 +93,13 @@ int main(int argc, char** argv){
     tt0.start();
 
 //    string graphfile="/media/TraminerData/mengxuan/MengxuanGraphWPSL/Cond/CondWeighted";
-    string graphfile=DesFile+"/"+dataset+"/"+dataset;
-    string ODfile=graphfile+".query";
-    string updateFile=graphfile+".update";
+    string sourcePath=DesFile+"/"+dataset+"/";
+    string ODfile=sourcePath+dataset+".query";
+    string updateFile=sourcePath+dataset+".update";
 
     Graph g;
     g.threadnum=threadNum;//thread number of parallel computation (can be changed)
-    g.graphfile=graphfile;
+    g.sourcePath=sourcePath;
     g.ifParallel = true;
     g.dataset=dataset;
     g.algoChoice=algoChoice;
@@ -150,7 +150,7 @@ int main(int argc, char** argv){
     ///Task 2: Query processing
     g.CorrectnessCheck(100);
     g.EffiCheck(ODfile,runtimes);//query efficiency test
-    g.EffiCheck(ODfile+"SamePartiPlanar",runtimes);//same-partition query efficiency test
+    g.EffiCheck(sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partitionNum)+"/same_parti.query",runtimes);//same-partition query efficiency test
 //#ifdef __APPLE__
 ////    cout<<"The platform is macOS."<<endl;
 //    g.EffiCheck(ODfile+"SamePartiPlanar",runtimes);//same-partition query efficiency test

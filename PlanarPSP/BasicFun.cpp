@@ -1141,8 +1141,8 @@ void Graph::ODGene(int num, string filename){
     OF.close();
 }
 void Graph::QueryGenerationParti(bool ifSame){
-    string partitionfile=graphfile+"_"+algoParti+"_"+to_string(partiNum);
-    string orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
+    string partitionfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
+    string orderfile=partitionfile+"/vertex_orderMDE2";
 //#ifdef __APPLE__
 ////    cout<<"The platform is macOS."<<endl;
 //    ReadOrder(orderfile);
@@ -1161,7 +1161,7 @@ void Graph::QueryGenerationParti(bool ifSame){
 
     ReadOrder(orderfile);
     GraphPartitionRead(partitionfile);//read partitions
-    ODGeneSameParti(10000,graphfile+".querySamePartiPlanar");//same partition
+    ODGeneSameParti(10000,partitionfile+"/same_parti.query");//same partition
 
     exit(0);
 }

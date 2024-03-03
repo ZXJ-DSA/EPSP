@@ -9,7 +9,7 @@
 /// PLL
 void Graph::PLLIndexConstruction(int type){
     Timer tt;
-    string orderfile=graphfile+".order";
+    string orderfile=orderPath;
 //    orderfile="/home/data/xzhouby/datasets/"+dataset+"/"+dataset+"_NC_16/vertex_orderMDE2";
 //    orderfile=graphfile+"_NC_32/vertex_orderMDE2";
 //    orderfile=graphfile+"_kahypar_32/vertex_orderMDE2";

@@ -101,7 +101,7 @@ void Graph::CorrectnessCheck(int runtimes){
 }
 
 void Graph::EffiCheck(int runtimes){
-    string ODfile=graphfile+".query";
+    string ODfile=sourcePath+dataset+".query";
     ifstream IF(ODfile);
     if(!IF){
         cout<<"Cannot open Map "<<ODfile<<endl;
@@ -165,7 +165,7 @@ void Graph::EffiCheck(int runtimes){
 void Graph::IndexMaintenance(int updateType, int batchNum, bool ifBatch, int batchSize) {
     cout<<"Index update test..."<<endl;
     // read updates
-    string file = graphfile + ".update";
+    string file = sourcePath+dataset + ".update";
     bool ifDebug=false;
 //    ifDebug=true;
     vector<pair<pair<int,int>,pair<int,int>>> wBatch;
