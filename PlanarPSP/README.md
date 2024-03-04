@@ -30,16 +30,16 @@ Examples are shown as bellow.
 Examples are shown as bellow.
 
 * Test CH on NY with the corresponding PSP index using the PUNCH partition method and partition number 32:
-`./DSP ../Datasets NY 1 1 0 100 1 150 ~/data/NY/NY_NC_32/vertex_orderMDE2`
+`./DSP ../Datasets NY 1 1 0 100 1 150 ../Datasets/NY/NY_NC_32/vertex_orderMDE2`
 * Test H2H on NY with the corresponding PSP index using the PUNCH partition method and partition number 16:
-`./DSP ../Datasets NY 2 1 0 100 1 150 ~/data/NY/NY_NC_16/vertex_orderMDE2`
+`./DSP ../Datasets NY 2 1 0 100 1 150 ../Datasets/NY/NY_NC_16/vertex_orderMDE2`
 
 
 ## Data
 The datasets of this paper source from [http://www.dis.uniroma1.it/challenge9/download.shtml](http://www.dis.uniroma1.it/challenge9/download.shtml), [http://snap.stanford.edu/data](http://snap.stanford.edu/data), and [http://konect.cc/](http://konect.cc/). 
 Additionally, the processed data, including partitioned data, is available in our [OneDrive Link](https://hkustgz-my.sharepoint.com/:f:/g/personal/xzhouby_connect_hkust-gz_edu_cn/EkEOQqUbSMZKioVFPdUvJisBSvhvzn0dR-ubJtpt7pmX5A?e=UWolbO). Please refer to the paper for details.
 
-You can also use the example dataset in the directory `~/data` for testing.
+You can also use the example dataset in the directory `../Datasets` for testing.
 
 
 ## Dependency
