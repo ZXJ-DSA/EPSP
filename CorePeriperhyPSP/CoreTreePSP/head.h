@@ -159,7 +159,7 @@ struct Node{//tree node
 
 class Graph{
 public:
-    string graphfile;
+    string sourcePath;
     string dataset;
 	int node_num;    //vertex number
 	int edge_num;    //edge number

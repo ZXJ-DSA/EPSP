@@ -988,13 +988,13 @@ pair<int,int> Graph::DijkstraCoreDebug(int ID1, int ID2){
 //function of generating query and update core label to disk
 void Graph::CTQueryUpdateGen(int num) {
     cout<<"Writing CT queries into disk..."<<endl;
-    string filename=graphfile;
-    string QSameCore=filename+".queryQSameCore" + to_string(bandWidth);
-    string QCoreTree=filename+".queryQCoreTree" + to_string(bandWidth);
-    string QTreeTree=filename+".queryQTreeTree" + to_string(bandWidth);
-    string QSameTree=filename+".queryQSameTree" + to_string(bandWidth);
-    string USameCore=filename+".queryUSameCore" + to_string(bandWidth);
-    string USameTree=filename+".queryUSameTree" + to_string(bandWidth);
+    string filename=sourcePath+"tmp/"+dataset;
+    string QSameCore=filename+"_sameCore_CT" + to_string(bandWidth) + ".query";
+    string QCoreTree=filename+"_coreTree_CT" + to_string(bandWidth) + ".query";
+    string QTreeTree=filename+"_crossTree_CT" + to_string(bandWidth) + ".query";
+    string QSameTree=filename+"_sameTree_CT" + to_string(bandWidth) + ".query";
+    string USameCore=filename+"_sameCore_CT" + to_string(bandWidth) + ".update";
+    string USameTree=filename+"_sameTree_CT" + to_string(bandWidth) + ".update";
 
     Timer tt;
     tt.start();

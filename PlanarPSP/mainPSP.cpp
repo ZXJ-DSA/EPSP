@@ -12,7 +12,7 @@ int main(int argc, char** argv){
         printf("Planar Dynamic PSP Test.\nusage:\n");
         printf("<arg1> source path, e.g. /export/project/xzhouby\n");
         printf("<arg2> name of dataset, e.g. NY\n");
-        printf("<arg3> shortest path index, 1: CH; 2: H2H; 3: PLL. default: 2\n");
+        printf("<arg3> shortest path index, 1: CH; 2: TD; 3: PLL. default: 2\n");
         printf("<arg4> (optional) partitioned shortest path strategy, 1: Pre-boundary; 2: No-boundary; 3: Post-boundary. default: 2\n");
         printf("<arg5> (optional) partition method, (NC: PUNCH; MT: METIS; SC: SCOTCH; kahypar: KaHyPar; geometric: RCB; Bubble: Bubble; HEP: HEP; CLUGP: CLUGP), default: NC\n");
         printf("<arg6> (optional) partition number, e.g. 64\n");

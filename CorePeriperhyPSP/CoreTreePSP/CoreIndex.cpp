@@ -73,7 +73,7 @@ double Graph::Construct_core(int indexType) {
         rT=tt.GetRuntime();
 //        rT = BPCLConstructV(AdjaCore);
     }else if(indexType == 5){
-        ReadCoreIndex(graphfile);//read PLL
+        ReadCoreIndex(sourcePath+"tmp/"+dataset);//read PLL
     }
 
 //    CorrectnessCheckCore();

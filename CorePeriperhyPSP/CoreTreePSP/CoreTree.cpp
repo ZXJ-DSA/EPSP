@@ -70,7 +70,7 @@ void Graph::QueryGenerationSameParti(){
 //    ODGeneSameParti(10000,"/home/data/xzhouby/datasets/"+dataset+"/"+dataset+".querySamePartiCoreTree");//same partition
 //#endif
 
-    ODGeneSameParti(10000,graphfile+".querySamePartiCoreTree");//same partition
+    ODGeneSameParti(10000,sourcePath+"tmp/"+dataset+"_sameParti_CT"+ to_string(bandWidth)+".query");//same partition
 
     exit(0);
 }
@@ -142,9 +142,9 @@ void Graph::ODGeneSameParti(int num, string filename){
 
 void Graph::IndexMaintenanceTypeTest(int updateType, int updateBatch) {
     cout<<"Same core update"<<endl;
-    IndexMaintenanceType(graphfile+".queryUSameCore"+ to_string(bandWidth),updateType,updateBatch,0);
+    IndexMaintenanceType(sourcePath+dataset+"sameCore_CT"+ to_string(bandWidth)+".query",updateType,updateBatch,0);
     cout<<"Same tree update"<<endl;
-    IndexMaintenanceType(graphfile+".queryUSameTree"+ to_string(bandWidth),updateType,updateBatch,1);
+    IndexMaintenanceType(sourcePath+dataset+"sameTree_CT"+ to_string(bandWidth)+".query",updateType,updateBatch,1);
 }
 
 void Graph::IndexMaintenanceType(string updateFile, int updateType, int updateBatch, int type){
@@ -638,10 +638,10 @@ void Graph::EffiCheck(string filename,int runtimes){
 }
 
 void Graph::EffiCheckQueryTypeTest(int runtimes) {
-    EffiCheckQueryType(graphfile+".queryQSameCore" + to_string(bandWidth), runtimes, 0);
-    EffiCheckQueryType(graphfile+".queryQCoreTree" + to_string(bandWidth), runtimes, 1);
-    EffiCheckQueryType(graphfile+".queryQTreeTree" + to_string(bandWidth), runtimes, 2);
-    EffiCheckQueryType(graphfile+".queryQSameTree" + to_string(bandWidth), runtimes, 3);
+    EffiCheckQueryType(sourcePath+dataset+"sameCore_CT"+ to_string(bandWidth)+".query", runtimes, 0);
+    EffiCheckQueryType(sourcePath+dataset+"coreTree_CT"+ to_string(bandWidth)+".query", runtimes, 1);
+    EffiCheckQueryType(sourcePath+dataset+"crossTree_CT"+ to_string(bandWidth)+".query", runtimes, 2);
+    EffiCheckQueryType(sourcePath+dataset+"sameTree_CT"+ to_string(bandWidth)+".query", runtimes, 3);
 }
 
 //function for efficiency test
@@ -737,7 +737,7 @@ void Graph::DFSTree(vector<int>& tNodes, int id){
 }
 
 void Graph::SameTreeUpdateGen(vector<int>& tRoots, int times){
-    string STQuery = graphfile + ".updateST";
+    string STQuery = sourcePath + dataset + ".updateST";
 
     /*---OD pairs generation---*/
     int pairs = 0;
@@ -804,7 +804,7 @@ void Graph::SameTreeUpdateGen(vector<int>& tRoots, int times){
 }
 
 void Graph::SameTreeQueryGen(vector<int>& tRoots, int times){
-    string STQuery = graphfile + ".queryST";
+    string STQuery = sourcePath + "tmp/"+ dataset + "sameTree_CT"+ to_string(bandWidth)+".query";
 
     /*---OD pairs generation---*/
     int pairs = 0;

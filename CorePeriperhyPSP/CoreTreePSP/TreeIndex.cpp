@@ -137,7 +137,7 @@ void Graph::H2HContract(){
 
     NodeOrder_ = NodeOrder;
 
-    string orderF = graphfile + ".orderCT" + to_string(bandWidth);
+    string orderF = sourcePath + "tmp/" + dataset + ".orderCT" + to_string(bandWidth);
 //#ifdef __APPLE__
 ////    cout<<"The platform is macOS."<<endl;
 //#else

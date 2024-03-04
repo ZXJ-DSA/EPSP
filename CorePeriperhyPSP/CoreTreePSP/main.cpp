@@ -14,8 +14,8 @@ int main(int argc, char** argv){
         printf("<arg3> tree width, e.g. 20\n");
         printf("<arg4> (optional) Tree index type, (0: CH; 1: TD), default: 1\n");
         printf("<arg5> (optional) update type, (0: No Update Test; 1: Decrease; 2: Increase), default: 0\n");
-        printf("<arg6> (optional) update number, default: 1000\n");
-        printf("<arg7> (optional) thread number, default: 15\n");
+        printf("<arg6> (optional) update number, eg. 1000\n");
+        printf("<arg7> (optional) thread number, eg. 15\n");
         printf("<arg8> (optional) PSP strategy, (1: Pre-boundary; 2: No-boundary; 3: Post-boundary), default: 2\n");
         printf("<arg9> (optional) preprocessing task, (1: Same-partition query generation), default: 1\n");
         exit(0);
@@ -84,13 +84,12 @@ int main(int argc, char** argv){
     Timer tt0;
     tt0.start();
 
-//    string graphfile="/media/TraminerData/mengxuan/MengxuanGraphWPSL/Cond/CondWeighted";
-    string graphfile=DesFile+"/"+dataset+"/"+dataset;
+    string sourcePath=DesFile+"/"+dataset+"/";
 //    string orderfile=graphfile+".order";
-    string ODfile=graphfile+".query";
+    string ODfile=sourcePath+dataset+".query";
 
 
-    string updateFile=graphfile+".update";
+    string updateFile=sourcePath+dataset+".update";
 
     Graph g;
     g.threadnum=threadNum;//thread number of parallel computation (can be changed)
@@ -131,9 +130,9 @@ int main(int argc, char** argv){
 //    g.CoreGraphDebug(graphfile+"Core3");//Test
 //    g.CoreGraphDebug(graphfile+"CorePLL_148");//NY, original
 
-    g.graphfile=graphfile;
+    g.sourcePath=sourcePath;
 
-    g.ReadGraph(graphfile);//
+    g.ReadGraph(sourcePath+dataset);//
 //    g.StainingMethod(0);
 
     if(preTask==1){
@@ -149,7 +148,7 @@ int main(int argc, char** argv){
     ///Task 2: Query processing
     g.CorrectnessCheck(100);
     g.EffiCheck(ODfile,runtimes);//query efficiency test
-    g.EffiCheck(ODfile+"SamePartiCoreTree",runtimes);//query efficiency test
+    g.EffiCheck(sourcePath+"tmp/"+dataset+"_sameParti_CT"+ to_string(treeWidth)+".query",runtimes);//query efficiency test
 //    exit(0);
 //#ifdef __APPLE__
 ////    cout<<"The platform is macOS."<<endl;
