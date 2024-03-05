@@ -61,19 +61,37 @@ struct OrderComp{
     }
 };
 
-struct OrderComp3{
-    int ID1, ID2;
-    OrderComp3(){
-        ID1=0, ID2=0;
+struct OrderComp2{
+    int x;
+    int y;//order(x)<order(y)
+    OrderComp2(int _x, int _y){
+        x=_x; y=_y;
     }
-    OrderComp3(int _ID1, int _ID2){
-        ID1=_ID1;
-        ID2=_ID2;
-    }
-    bool operator< (const OrderComp3 d) const{//return the larger order vertex
-        return (NodeOrder_[ID1] > NodeOrder_[d.ID1]) || ((NodeOrder_[ID1] <= NodeOrder_[d.ID1]) && (NodeOrder_[ID2] > NodeOrder_[d.ID2]) );
+    bool operator< (const OrderComp2& d) const{
+        if(x==d.x && y==d.y){//avoid the redundant
+            return false;
+        }else{
+            if(x!=d.x)
+                return NodeOrder_[x]<NodeOrder_[d.x];
+            if(y!=d.y)
+                return NodeOrder_[y]<NodeOrder_[d.y];
+        }
     }
 };
+
+//struct OrderComp3{
+//    int ID1, ID2;
+//    OrderComp3(){
+//        ID1=0, ID2=0;
+//    }
+//    OrderComp3(int _ID1, int _ID2){
+//        ID1=_ID1;
+//        ID2=_ID2;
+//    }
+//    bool operator< (const OrderComp3 d) const{//return the larger order vertex
+//        return (NodeOrder_[ID1] > NodeOrder_[d.ID1]) || ((NodeOrder_[ID1] <= NodeOrder_[d.ID1]) && (NodeOrder_[ID2] > NodeOrder_[d.ID2]) );
+//    }
+//};
 
 //return smallest Dis with largest-order vertex
 struct MinComp{
@@ -263,8 +281,10 @@ public:
     }
 
     void IndexConstruction();
-    void CTIndexConstruct(bool ifCH); //Core-tree index construction
-    void H2HContract();
+    void CTIndexConstruct(); //Core-tree index construction, tree index is TD
+    void CTIndexConstructCH(); //Core-tree index construction, tree index is CH
+    void MDEContract();
+    void Create_partitions();//obtain the partitions for TD-CH
     void Create_tree();
     void Compute_tree_label(bool ifParallel);
     void Construct_tree(bool ifParallel);
@@ -284,7 +304,9 @@ public:
     void deleteECore(int u,int v);
     void insertECore(int u,int v,int w);
     int matchCore(int x,vector<pair<int,pair<int,int>>> &vert);//vector<pair<int,int>> &vert
+    int matchCoreCH(int x,vector<pair<int,pair<int,int>>> &vert);//vector<pair<int,int>> &vert
     void IndexsizeCTH2H();  //Core-tree index size computation
+    void IndexsizeCTCH();  //Core-tree index size computation
 
 	//PLL index construction
 	void PLLIndexConstruct();
@@ -453,6 +475,8 @@ public:
     void AncestorEntryDecreaseUpdate(int child,vector<int>& line, vector<int>& interfaces, set<int>& vertexIDChL, map<int,int>& checkedDis, vector<Node> &Tree, vector<int> &rank);
     void AncestorEntryIncreaseUpdate(int children, vector<int>& line, vector<int>& interfaces, int& changelabel, vector<Node> &Tree, vector<int> &rank, vector<vector<int>> &VidtoTNid, int lowestH);
 
+    void CHdecreaseBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch);
+    void CHincreaseBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch);
     void DecreaseCHNew(int a,int b, int newW, vector<vector<pair<vertex,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax);
     void IncreaseCHNew(int a, int b, int oldW, int newW, vector<vector<pair<vertex,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax,vector<map<int, vector<pair<int,int>>>> &SCconNodesMT, vector<vector<int>> &VidtoTNid);
 

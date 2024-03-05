@@ -12,13 +12,13 @@ void Graph::IndexConstruction() {
         if(strategy!=NoBoundary){
             cout<<"Wrong PSP strategy! "<< strategy<<endl; exit(1);
         }
-        CTIndexConstruct(true);
+        CTIndexConstructCH();
     }else if(algoTree==1){
-        CTIndexConstruct(false);
+        CTIndexConstruct();
     }
 }
 
-void Graph::CTIndexConstruct(bool ifCH){
+void Graph::CTIndexConstruct(){
     double runT1, runT2, runT3, runT4;
     runT1=0, runT2=0, runT3=0, runT4=0;
     Timer tt;
@@ -45,19 +45,51 @@ void Graph::CTIndexConstruct(bool ifCH){
 
 
     ///tree index construction
-    if(!ifCH){
-        tt.start();
-        Compute_tree_label(ifParallel);//Construct periphery index (H2H label + interface label)
-        tt.stop();
-        runT3 = tt.GetRuntime();
-        cout<<"Partition's index construction time: "<<runT3<<" s"<<endl;
-    }
+    tt.start();
+    Compute_tree_label(ifParallel);//Construct periphery index (H2H label + interface label)
+    tt.stop();
+    runT3 = tt.GetRuntime();
+    cout<<"Partition's index construction time: "<<runT3<<" s"<<endl;
+
     cout<<"Overall Tree's construction time: "<<runT1+runT3<<" s."<<endl;
 
     cout<<"Overall Index Construction Time: "<<runT1+T_core+runT3+runT4<<" s."<<endl;
     cout<<"Overall Time: "<<runT1+runT2+runT3+runT4<<" s."<<endl;
 
     IndexsizeCTH2H();//index (labeling+pruning point) size computation
+}
+
+void Graph::CTIndexConstructCH(){
+    double runT1, runT2, runT3, runT4;
+    runT1=0, runT2=0, runT3=0, runT4=0;
+    Timer tt;
+    tt.start();
+    ///graph contraction and create trees
+    MDEContract();//MDE-based contraction
+//    Create_partitions();//Create partitions
+    Create_tree();
+    tt.stop();
+    runT1 = tt.GetRuntime();
+    cout<<"Graph contraction time: "<<runT1<<" s"<<endl;
+
+
+//    g.WriteOrder(graphfile+".order");
+//    WriteCoreGraph(graphfile+"C");
+//    exit(0);
+
+    ///core index construction
+    tt.start();
+    double T_core=Construct_core(algoCoreC);
+//    WriteCoreIndex(graphfile);
+//    ReadCoreIndex(graphfile+"-"+ to_string(bandWidth));
+    tt.stop();
+    runT2 = tt.GetRuntime();
+    cout<<"Core's index construction time (with postprocessing): "<<runT2<<" s."<< endl;
+    cout<<"Overall Tree's construction time: "<<runT1+runT3<<" s."<<endl;
+    cout<<"Overall Index Construction Time: "<<runT1+T_core+runT3+runT4<<" s."<<endl;
+    cout<<"Overall Time: "<<runT1+runT2+runT3+runT4<<" s."<<endl;
+
+    IndexsizeCTCH();//index (labeling+pruning point) size computation
 }
 
 void Graph::QueryGenerationSameParti(){
@@ -289,6 +321,7 @@ void Graph::IndexMaintenance(string updateFile, int updateType, int updateBatch)
 //    ifDebug=true;
     auto NeighborTemp = Neighbor; auto AdjaCoreTemp = AdjaCore; auto AdjaCoreMapTemp = AdjaCoreMap;
     auto LabelTemp = Label; auto TreeTemp = Tree; //auto LabelVTemp=LabelV.Labels;
+    auto NeighborConTemp = NeighborCon;
 
     switch (updateType) {
         case 1:{
@@ -327,8 +360,6 @@ void Graph::IndexMaintenance(string updateFile, int updateType, int updateBatch)
 
                 runT1 += tt1.GetRuntime();
 
-
-
                 if(ifDebug){
                     cout<<" Time: "<<tt1.GetRuntime()<< " s."<<endl;
                     CorrectnessCheck(100);
@@ -340,6 +371,7 @@ void Graph::IndexMaintenance(string updateFile, int updateType, int updateBatch)
 //            break;
             Neighbor = NeighborTemp; AdjaCore = AdjaCoreTemp; AdjaCoreMap = AdjaCoreMapTemp;
             Label = LabelTemp; Tree = TreeTemp; //LabelV.Labels = LabelVTemp;
+            NeighborCon = NeighborConTemp;
 //            break;
         }
         case 2:{
@@ -362,7 +394,6 @@ void Graph::IndexMaintenance(string updateFile, int updateType, int updateBatch)
                     cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW;//<<endl;
                 }
 
-
                 tt1.start();
                 Increase(ID1,ID2,oldW,newW);
                 tt1.stop();
@@ -376,8 +407,8 @@ void Graph::IndexMaintenance(string updateFile, int updateType, int updateBatch)
 
             }
             cout<<"Average Increase update Time: "<<runT1/updateBatch<<" s."<<endl;
-            Neighbor = NeighborTemp; AdjaCore = AdjaCoreTemp; AdjaCoreMap = AdjaCoreMapTemp;
-            Label = LabelTemp; Tree = TreeTemp; //LabelV.Labels = LabelVTemp;
+//            Neighbor = NeighborTemp; AdjaCore = AdjaCoreTemp; AdjaCoreMap = AdjaCoreMapTemp;
+//            Label = LabelTemp; Tree = TreeTemp; //LabelV.Labels = LabelVTemp;
             break;
         }
         default:
@@ -430,7 +461,47 @@ void Graph::IndexsizeCTH2H(){
     cout<<"Minimum index size "<<(double)(m1+m3)/1024/1024<<" MB"<<endl;
     cout<<"Overall index size "<<(double)m/1024/1024<<" MB"<<endl;
 }
+//function for computing the index size
+void Graph::IndexsizeCTCH(){
+    unsigned long long m=0,m1=0,m2=0,m3=0,m4=0,m5=0;
 
+    //core index
+    for(int k=0;k<Label.size();k++){
+        m1+=Label[k].size()*2*sizeof(int);
+    }
+
+    for(int i=0;i<PruningPointSet.size();i++){//Order
+        for(auto it=PruningPointSet[i].begin();it!=PruningPointSet[i].end();it++){//Order
+            m2+=(1+(*it).second.size())*sizeof(int);
+        }
+    }
+
+    //Periphery index
+    int x;
+    for(int i=HighestOrder-1;i>=0;--i){
+        x=vNodeOrder[i];
+        m3+=NeighborCon[x].size()*4*sizeof(int);//ID,dis,cnt,pos
+    }
+
+
+
+    for(int i=0;i< SCconNodesMT.size();i++){
+        for(auto it=SCconNodesMT[i].begin(); it!=SCconNodesMT[i].end(); it++){
+            m4+=sizeof(int)+(*it).second.size()*2*sizeof(int);
+        }
+    }
+
+    //cout<<"Index size "<<(double)m1/1024/1024<<", Pruning point size "<<(double)m2/1024/1024<<endl;
+    m=m1+m2+m3+m4+m5;
+    cout<<"Core label size: "<<(double)m1/1024/1024<<" MB"<<endl;
+    cout<<"Pruning point size: "<<(double)m2/1024/1024<<" MB"<<endl;
+    cout<<"Core Index size: "<<(double)(m1+m2)/1024/1024<<" MB"<<endl;
+    cout<<"Tree label size: "<<(double)m3/1024/1024<<" MB"<<endl;
+    cout<<"Tree update info size: "<<(double)m4/1024/1024<<" MB"<<endl;
+    cout<<"Tree Index size: "<<(double)(m3+m4)/1024/1024<<" MB"<<endl;
+    cout<<"Minimum index size "<<(double)(m1+m3)/1024/1024<<" MB"<<endl;
+    cout<<"Overall index size "<<(double)m/1024/1024<<" MB"<<endl;
+}
 
 /// Query Processing
 //function for correctness check
@@ -446,10 +517,10 @@ void Graph::CorrectnessCheck(int runtimes){
         s=rand()%node_num;
         t=rand()%node_num;
 //        s=530835,t=802626;//GO
-//        s=248272,t=242169;//NY
+//        s=202789,t=69576;//NY
 
         if(runtimes == 1){
-//            cout<<"s: "<<s<<" ; t: "<<t<<endl;
+            cout<<"s: "<<s<<" ; t: "<<t<<endl;
         }
         d1=Dijkstra(s,t,Neighbor);
 
@@ -471,7 +542,7 @@ void Graph::CorrectnessCheck(int runtimes){
             if(algoTree==1){
                 QueryDebug(s,t);
             }
-
+            exit(1);
         }
     }
     cout<<"Average Query Time: "<<1000*runT/runtimes<<" ms."<<endl;
@@ -1937,6 +2008,9 @@ void Graph::Decrease(int a, int b, int oldW, int newW){
         //cout<<"decrease "<<a<<" "<<b<<" "<<oldW<<" "<<newW<<endl;
         if(algoTree==0){
             DecreaseCHNew(a,b,newW,Neighbor,Tree,rank,heightMax);
+//            vector<pair<pair<int,int>,pair<int,int>>> wBatch;
+//            wBatch.emplace_back(make_pair(make_pair(a,b), make_pair(oldW,newW)));
+//            CHdecreaseBat(wBatch);
         }else if(algoTree==1){
             DecreaseH2HNew(a,b,newW,Neighbor,Tree,rank,heightMax,true);
 //        DecreaseH2HNew(a,b,newW,Neighbor,Tree,rank,heightMax,false);
@@ -2036,20 +2110,25 @@ void Graph::Increase(int a, int b, int oldW, int newW){
 //    AdjaCoreMapOld = AdjaCoreMap;
 //    NodeOrder_ = NodeOrder;///
 
+    bool ifDebug=false;
+//    ifDebug=true;
+
     int pid = -1;
     if((CoreTag[a]==-1 && !BoundTag[a].first) || (CoreTag[b]==-1 && !BoundTag[b].first)){//edges in the core
-//        cout<<"edge in core"<<endl;
+        if(ifDebug){
+            cout<<" edge in core"<<endl;
+        }
+
         if(algoCoreU==0){
-    //        IncreasePSL(a,b,oldW,newW,AdjaCore,Label,PruningPointNew,NoSupportedPair);
-//            IncreasePSLNew(a,b,oldW,newW,AdjaCore,Label,PruningPointSetOrder);//set version with NoSupportedPair, queue
             IncreasePSLNew(a,b,oldW,newW,AdjaCore,Label,PruningPointSet);//set version with NoSupportedPair, queue
         }else if(algoCoreU==1){
             PLLinc(a,b,oldW,newW,AdjaCore);
         }
 
     }else if(CoreTag[a]!=-1 || CoreTag[b]!=-1){//edges in one partition, either endpoint is in-partition vertex
-//        cout<<"edge in partition"<<endl;
-
+        if(ifDebug) {
+            cout << " edge in partition" << endl;
+        }
         if(CoreTag[a]!=-1)
             pid=CoreTag[a];
         else
@@ -2058,11 +2137,13 @@ void Graph::Increase(int a, int b, int oldW, int newW){
         int ID1,ID2,dis,olddis;
         AdjaCoreMapOld = AdjaCoreMap;
 
-
         //cout<<"<<<<<<<<<<"<<endl;
         //cout<<CoreTag[a]<<" "<<BoundTag[a]<<" "<<CoreTag[b]<<" "<<BoundTag[b]<<" pid "<<pid<<endl;
         if(algoTree==0){
             IncreaseCHNew(a,b,oldW,newW,Neighbor,Tree,rank,heightMax,SCconNodesMT,VidtoTNid);
+//            vector<pair<pair<int,int>,pair<int,int>>> wBatch;
+//            wBatch.emplace_back(make_pair(make_pair(a,b), make_pair(oldW,newW)));
+//            CHincreaseBat(wBatch);
         }else if(algoTree==1){
             IncreaseH2HNew(a,b,oldW,newW,Neighbor,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,true);
 //        IncreaseH2HNew(a,b,oldW,newW,Neighbor,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,false);
@@ -2095,9 +2176,12 @@ void Graph::Increase(int a, int b, int oldW, int newW){
             }
         }
 
-    }else{//Both end points are boundary vertex
+    }
+    else{//Both end points are boundary vertex
         //cout<<CoreTag[a]<<" "<<BoundTag[a]<<" "<<CoreTag[b]<<" "<<BoundTag[b]<<endl;
-//        cout<<"edge between boundary vertex"<<endl;
+        if(ifDebug) {
+            cout << " edge between boundary vertex" << endl;
+        }
         int olddis=AdjaCoreMap[a][b];
         assert(olddis <= oldW);
         if(olddis==oldW){//it indicates the update of e(a,b) may influence AdjaCoreMap[a][b]
@@ -2133,59 +2217,101 @@ void Graph::Increase(int a, int b, int oldW, int newW){
                 Wnodes=SCconNodesMT[hid][lid]; //cout<<"wid num "<<Wnodes.size()<<endl;
             }
 
+            if(algoTree==0){//CH
+                for(int i=0;i<Wnodes.size();i++){
+                    wid=Wnodes[i].first;//wid must be periphery vertex
+                    assert(CoreTag[wid] != -1);
 
-            for(int i=0;i<Wnodes.size();i++){
-                wid=Wnodes[i].first;//wid must be periphery vertex
-                assert(CoreTag[wid] != -1);
-
-                pid = CoreTag[wid];
-
-                for(int j=0;j<Tree[rank[wid]].vert.size();j++){
-                    if(Tree[rank[wid]].vert[j].first==lid){//shortcut weight from wid to lid
-                        ssw=Tree[rank[wid]].vert[j].second.first;
-                    }
-                    if(Tree[rank[wid]].vert[j].first==hid){//shortcut weight from wid to hid
-                        wtt=Tree[rank[wid]].vert[j].second.first;
-                    }
-                }
-                assert(ssw != INF);
-                assert(wtt != INF);
-                if(ssw+wtt<Cw){
-                    Cw=ssw+wtt;
-                    countwt=1;
-                    newDis=Cw;
-                    newSets.clear();
-                    newSets.insert(pid);
-                }else if(ssw+wtt==Cw){
-                    countwt+=1;
-                    newSets.insert(pid);
-                }
-
-                if(lid<hid){
-                    if(SuppPartiID[lid][hid].find(pid) != SuppPartiID[lid][hid].end()){
-                        if(SuppPartiID[lid][hid][pid] != ssw+wtt){//values of SuppPartiID may be wrong
-                            SuppPartiID[lid][hid][pid] = ssw+wtt;
+                    pid = CoreTag[wid];
+                    for(int j=0;j<Tree[rank[wid]].vert.size();j++){
+                        if(Tree[rank[wid]].vert[j].first==lid){//shortcut weight from wid to lid
+                            ssw=Tree[rank[wid]].vert[j].second.first;
+                        }
+                        if(Tree[rank[wid]].vert[j].first==hid){//shortcut weight from wid to hid
+                            wtt=Tree[rank[wid]].vert[j].second.first;
                         }
                     }
-                }else{
-                    if(SuppPartiID[hid][lid].find(pid) != SuppPartiID[hid][lid].end()){
-                        if(SuppPartiID[hid][lid][pid] != ssw+wtt){//values of SuppPartiID may be wrong
-                            SuppPartiID[hid][lid][pid] = ssw+wtt;
+//                    for(int j=0;j<NeighborCon[wid].size();j++){
+//                        if(NeighborCon[wid][j].first==lid){//shortcut weight from wid to lid
+//                            ssw=NeighborCon[wid][j].second.first;
+//                        }
+//                        if(NeighborCon[wid][j].first==hid){//shortcut weight from wid to hid
+//                            wtt=NeighborCon[wid][j].second.first;
+//                        }
+//                    }
+                    assert(ssw != INF);
+                    assert(wtt != INF);
+                    if(ssw+wtt<Cw){
+                        Cw=ssw+wtt;
+                        countwt=1;
+                        newDis=Cw;
+                        newSets.clear();
+                        newSets.insert(pid);
+                    }else if(ssw+wtt==Cw){
+                        countwt+=1;
+                        newSets.insert(pid);
+                    }
+
+                    if(lid<hid){
+                        if(SuppPartiID[lid][hid].find(pid) != SuppPartiID[lid][hid].end()){
+                            if(SuppPartiID[lid][hid][pid] != ssw+wtt){//values of SuppPartiID may be wrong
+                                SuppPartiID[lid][hid][pid] = ssw+wtt;
+                            }
+                        }
+                    }else{
+                        if(SuppPartiID[hid][lid].find(pid) != SuppPartiID[hid][lid].end()){
+                            if(SuppPartiID[hid][lid][pid] != ssw+wtt){//values of SuppPartiID may be wrong
+                                SuppPartiID[hid][lid][pid] = ssw+wtt;
+                            }
                         }
                     }
-                }
 
+                }
+            }else if(algoTree==1){
+                for(int i=0;i<Wnodes.size();i++){
+                    wid=Wnodes[i].first;//wid must be periphery vertex
+                    assert(CoreTag[wid] != -1);
+
+                    pid = CoreTag[wid];
+                    for(int j=0;j<Tree[rank[wid]].vert.size();j++){
+                        if(Tree[rank[wid]].vert[j].first==lid){//shortcut weight from wid to lid
+                            ssw=Tree[rank[wid]].vert[j].second.first;
+                        }
+                        if(Tree[rank[wid]].vert[j].first==hid){//shortcut weight from wid to hid
+                            wtt=Tree[rank[wid]].vert[j].second.first;
+                        }
+                    }
+                    assert(ssw != INF);
+                    assert(wtt != INF);
+                    if(ssw+wtt<Cw){
+                        Cw=ssw+wtt;
+                        countwt=1;
+                        newDis=Cw;
+                        newSets.clear();
+                        newSets.insert(pid);
+                    }else if(ssw+wtt==Cw){
+                        countwt+=1;
+                        newSets.insert(pid);
+                    }
+
+                    if(lid<hid){
+                        if(SuppPartiID[lid][hid].find(pid) != SuppPartiID[lid][hid].end()){
+                            if(SuppPartiID[lid][hid][pid] != ssw+wtt){//values of SuppPartiID may be wrong
+                                SuppPartiID[lid][hid][pid] = ssw+wtt;
+                            }
+                        }
+                    }else{
+                        if(SuppPartiID[hid][lid].find(pid) != SuppPartiID[hid][lid].end()){
+                            if(SuppPartiID[hid][lid][pid] != ssw+wtt){//values of SuppPartiID may be wrong
+                                SuppPartiID[hid][lid][pid] = ssw+wtt;
+                            }
+                        }
+                    }
+
+                }
             }
 
-//            for(auto it=SuppPartiID[a][b].begin();it!=SuppPartiID[a][b].end();++it){//for the partitions that contains a and b
-//                if(it->second < newDis){
-//                    newDis = it->second;
-//                    newSets.clear();
-//                    newSets.insert(it->first);
-//                }else if(it->second == newDis){
-//                    newSets.insert(it->first);
-//                }
-//            }
+
             if(newDis > oldW){//trigger update
                 if(newDis <= newW){//if the partition-supported edge weight is smaller than newW, we update edge weight from oldW to newDis, <
 //                    cout<<"Supported by partition: "<<oldW<<" "<<newDis<<" "<<newW<<", "<<newSets.size()<<" "<<SuppPartiID[a][b].size()<<" "<<SuppPartiIDReal[a][b].first<<" "<<SuppPartiIDReal[a][b].second.size()<<endl;
@@ -2194,32 +2320,38 @@ void Graph::Increase(int a, int b, int oldW, int newW){
                     if(a<b){
                         SuppPartiIDReal[a][b].first = newDis;
                         SuppPartiIDReal[a][b].second = newSets;
-                        /// update interface entries
-                        for(auto it=SuppPartiID[a][b].begin();it!=SuppPartiID[a][b].end();++it){//for the partitions that contains a and b
+                        if(algoTree==1){
+                            /// update interface entries
+                            for(auto it=SuppPartiID[a][b].begin();it!=SuppPartiID[a][b].end();++it){//for the partitions that contains a and b
 //                        cout<<"Partition "<<it->first<<" "<<it->second<<endl;
-                            int Pid = it->first;
-                            int rootID = BoundVertex[Pid][BoundVertex[Pid].size()-1];
-                            vector<int> interfaceP;
-                            for(auto it2=Tree[rank[rootID]].vert.begin();it2!=Tree[rank[rootID]].vert.end();++it2){
-                                interfaceP.emplace_back(it2->first);
+                                int Pid = it->first;
+                                int rootID = BoundVertex[Pid][BoundVertex[Pid].size()-1];
+                                vector<int> interfaceP;
+                                for(auto it2=Tree[rank[rootID]].vert.begin();it2!=Tree[rank[rootID]].vert.end();++it2){
+                                    interfaceP.emplace_back(it2->first);
+                                }
+                                InterfacePropagate( rank[rootID], interfaceP,Tree,true);
                             }
-                            InterfacePropagate( rank[rootID], interfaceP,Tree,true);
                         }
+
                     }else{
                         SuppPartiIDReal[b][a].first = newDis;
                         SuppPartiIDReal[b][a].second = newSets;
-                        /// update interface entries
-                        for(auto it=SuppPartiID[b][a].begin();it!=SuppPartiID[b][a].end();++it){//for the partitions that contains a and b
+                        if(algoTree==1){
+                            /// update interface entries
+                            for(auto it=SuppPartiID[b][a].begin();it!=SuppPartiID[b][a].end();++it){//for the partitions that contains a and b
 //                        cout<<"Partition "<<it->first<<" "<<it->second<<endl;
-                            int Pid = it->first;
-                            int rootID = BoundVertex[Pid][BoundVertex[Pid].size()-1];
-                            vector<int> interfaceP;
+                                int Pid = it->first;
+                                int rootID = BoundVertex[Pid][BoundVertex[Pid].size()-1];
+                                vector<int> interfaceP;
 
-                            for(auto it2=Tree[rank[rootID]].vert.begin();it2!=Tree[rank[rootID]].vert.end();++it2){
-                                interfaceP.emplace_back(it2->first);
+                                for(auto it2=Tree[rank[rootID]].vert.begin();it2!=Tree[rank[rootID]].vert.end();++it2){
+                                    interfaceP.emplace_back(it2->first);
+                                }
+                                InterfacePropagate( rank[rootID], interfaceP,Tree,true);
                             }
-                            InterfacePropagate( rank[rootID], interfaceP,Tree,true);
                         }
+
                     }
 
 

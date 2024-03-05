@@ -17,7 +17,7 @@ int main(int argc, char** argv){
         printf("<arg6> (optional) update number, eg. 1000\n");
         printf("<arg7> (optional) thread number, eg. 15\n");
         printf("<arg8> (optional) PSP strategy, (1: Pre-boundary; 2: No-boundary; 3: Post-boundary), default: 2\n");
-        printf("<arg9> (optional) preprocessing task, (1: Same-partition query generation), default: 1\n");
+        printf("<arg9> (optional) preprocessing task, (1: Same-tree query generation), default: 1\n");
         exit(0);
     }
 
@@ -105,15 +105,16 @@ int main(int argc, char** argv){
     g.strategy=strategy;
     g.algoCoreC=algoCoreC;
     g.algoCoreU=algoCoreU;
+    g.algoTree=algoTree;
     cout<<"Dataset: "<<dataset<<endl;
     cout<<"Bandwidth: "<<g.bandWidth<<endl;
     cout<<"Thread number: "<<g.threadnum<<endl;
     cout<<"Batch size: "<<g.batchsize<<endl;
     cout<<"PSP strategy: "<<g.strategy<<endl;
     cout<<"Tree index: ";
-    if(algoTree==0){
+    if(g.algoTree==0){
         cout<<"CH"<<endl;
-    }else if(algoTree==1){
+    }else if(g.algoTree==1){
         cout<<"H2H"<<endl;
     }else{
         cout<<"wrong tree index type!"<<endl; exit(1);

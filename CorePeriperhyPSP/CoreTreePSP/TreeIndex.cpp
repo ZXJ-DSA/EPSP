@@ -12,12 +12,12 @@ vector<int> _DD_;//true degree, temporal degree ,_DD2_
 //// Index Construction
 //Function of constructing tree index
 void Graph::Construct_tree(bool ifParallel){
-    H2HContract();//MDE-based contraction
+    MDEContract();//MDE-based contraction
     Create_tree();//Create tree
 }
 
 //Function of MDE-based contracting for H2H
-void Graph::H2HContract(){
+void Graph::MDEContract(){
     HighestOrder = node_num;
     //for H2H update
     SCconNodesMT.assign(node_num, map<int, vector<pair<int,int>>>());
@@ -89,6 +89,12 @@ void Graph::H2HContract(){
             }
         }
         NeighborCon[x].assign(Neigh.begin(),Neigh.end());
+//        if(x==12449){
+//            cout<<"Find. "<<x<<endl;
+//            for(int j=0;j<NeighborCon[x].size();j++){
+//                cout<<j<<": "<<NeighborCon[x][j].first<<" "<<NeighborCon[x][j].second.first<<endl;
+//            }
+//        }
 
         /// if still need to contract
         if(!CutLabel){
@@ -152,6 +158,244 @@ void Graph::H2HContract(){
 //    WriteOrder(graphfile+".order2");
 //    CompareOrder(graphfile+".order1", graphfile+".order2");
 //    exit(0);
+}
+//Function of creating tree
+void Graph::Create_partitions(){
+    cout<<"Creating partitions..."<<endl;
+    //// Get partitions
+    vector<int> cr;//the vertex rank of root's children
+    cr.clear();
+    int temp_ch=0;
+    int temp_vert=0;
+    int sum_singular=0;
+    int x;
+    vector<int> parents(node_num,-2);
+    vector<int> roots(node_num,-2);
+
+    for(int len=HighestOrder-1;len>=0;len--){//check the vertices with order lower than HighestOrder
+        x=vNodeOrder[len];
+        if(existCore[x]){
+            cout<<"Wrong: should be out of core"<<endl; exit(1);
+        }
+
+        int pa=matchCoreCH(x,NeighborCon[x]);
+        //cout<<"pa "<<pa<<endl;
+        if(pa==-1){//root vertex
+            roots[x]=x;
+            cr.push_back(x);//include the single-vertex periphery
+        }else{
+            roots[x]=roots[pa];
+        }
+        parents[x]=pa;
+    }
+
+
+    partiNum=cr.size();
+
+    cout<<"Tree number: "<<partiNum<<endl;
+    cout<<"Vertex number in core: "<<node_num - HighestOrder <<endl;
+
+//    ifstream inFile(graphfile + ".queryST",ios::in);
+//    if(!inFile){//if cannot open
+//        cout << "Cannot open file " << graphfile + ".queryST"<<endl;
+//        SameTreeQueryGen(tRoots, 1000);//generate same-tree queries
+//    }
+//    inFile.close();
+
+//    exit(0);
+
+    ///Get interface vertex
+
+    vector<int> vec;
+    vec.clear();
+    BoundVertex.assign(partiNum,vec);
+    set<int> sset;
+    sset.clear();
+    BoundVertexSet.assign(partiNum,sset);
+    BoundTag.assign(node_num, make_pair(false,set<int>()));//the boundary vertex is consisted by interface vertex and root vertex
+    map<int,int> PartiRoot;//partition root & partition ID
+    PartiRoot.clear();
+
+    int ID1,ID2;
+
+    for(int PID=0;PID<partiNum;PID++){
+        x=cr[PID];
+        for(int i=0;i<NeighborCon[x].size();i++){
+            ID1 = NeighborCon[x][i].first;
+            BoundVertex[PID].push_back(ID1);
+            BoundVertexSet[PID].insert(ID1);
+            BoundTag[ID1].first=true;//interface vertex
+            BoundTag[ID1].second.insert(PID);//record which partition it belongs to
+        }
+        BoundVertex[PID].push_back(x);
+//        BoundVertexSet[PID].insert(Tree[childrank].uniqueVertex);
+//        BoundTag[Tree[childrank].uniqueVertex]=true;//root vertex
+
+        PartiRoot.insert(make_pair(x,PID));//map from tree id to partition id
+    }
+
+    //if(PartiRoot.size()!=cr.size())
+    //cout<<"something wrong with the boundary node"<<endl;
+
+    CoreTag.assign(node_num,-1);//-1 indicates core vertex or root vertex, i>=0 indicates non-core vertex (i.e., the inner-partition vertex) and which partition it belongs to
+    int NodeID,RootNode,parentNode;
+    int count=0;
+    for(int len=HighestOrder-1;len>=0;len--){//-1
+        NodeID=vNodeOrder[len];
+//        if(NodeID == 46862){
+//            cout<<"Periphery "<<NodeID<<" "<<CoreTag[NodeID]<<endl;
+//        }
+
+        RootNode=roots[NodeID];
+        parentNode=parents[NodeID];
+
+        if(parentNode==-2){//wrong case
+            cout<<"Wrong parent id. "<<NodeID<<" "<<parentNode<<endl; exit(1);
+        }else{
+            CoreTag[NodeID]=PartiRoot[RootNode];
+        }
+    }
+
+//    ifstream inFile2(graphfile + ".updateST",ios::in);
+//    if(!inFile2){//if cannot open
+//        cout << "Cannot open file " << graphfile + ".updateST"<<endl;
+//        SameTreeUpdateGen(tRoots,1000);//generate same-tree queries
+//    }
+//    inFile2.close();
+
+    /// Get partition info: AdjaGraph (only for CT-DS) and AdjaCore
+    AdjaCoreMap.clear();
+    AdjaCoreMap.assign(node_num,map<int,int>());
+    AdjaCore.assign(node_num,vector<pair<vertex,int>>());
+
+    cout<<"Generating core graph..."<<endl;
+    /// for AdjaCore
+    int coreVNum=0;
+    unsigned long long coreENum=0;
+    int weight;
+    for(int NodeID=0;NodeID<node_num;NodeID++){
+        if(CoreTag[NodeID]==-1){//core vertex
+            ++coreVNum;
+            for(int nei=0;nei<NeighborCon[NodeID].size();nei++) {//for each neighbor
+                assert(CoreTag[NodeID]==-1);
+                int neiID=NeighborCon[NodeID][nei].first;
+                if(CoreTag[neiID] != -1){
+                    cout<<"Wrong! The contracted neighbor "<<neiID<<" of "<<NodeID<<" is not core vertex!!!"<<endl;
+                    exit(1);
+                }
+                if(AdjaCoreMap[NodeID].find(neiID) == AdjaCoreMap[NodeID].end()){//if not found
+                    coreENum+=2;
+                    weight = NeighborCon[NodeID][nei].second.first;
+                    AdjaCoreMap[NodeID][neiID]=weight;//the root vertex is regarded as core vertex
+                    AdjaCoreMap[neiID][NodeID]=weight;//the root vertex is regarded as core vertex
+                    AdjaCore[NodeID].emplace_back(neiID, weight);
+                    AdjaCore[neiID].emplace_back(NodeID, weight);
+                }
+
+            }
+        }
+    }
+    cout<<"Core vertex number: "<<coreVNum<<"; core edge number: "<<coreENum<< endl;
+
+
+//    for(int i=0;i<AdjaCoreMap.size();i++){
+//        if(AdjaCoreMap[i].empty())
+//            continue;
+//
+//        for(map<int,int>::iterator it=AdjaCoreMap[i].begin();it!=AdjaCoreMap[i].end();it++){
+//            AdjaCore[i].emplace_back(it->first, it->second);
+//        }
+//    }
+
+    map<int,map<int,int>> mapvec;
+    mapvec.clear();
+    SuppPartiID.assign(node_num, mapvec);//record the partition and its supportive value for a given interface edge
+    map<int,pair<int,set<int>>> mapset;
+    mapset.clear();
+    SuppPartiIDReal.assign(node_num, mapset);//record the partitions that really support a given interface edge
+    PartiVertex.assign(partiNum,unordered_set<int>());//only insert in-partition vertex in this case
+
+    for(int id=0;id<node_num;++id){
+        if(CoreTag[id]!=-1){//for periphery vertex
+            PartiVertex[CoreTag[id]].insert(id);
+        }
+    }
+
+//    cout<<"Vertex number of each periphery:";
+//    vector<int> PartiVertexNum(partiNum,0);
+//    double aveVnum = 0.0;
+//    for(int i=0;i<partiNum;++i){
+//        PartiVertexNum[i] = PartiVertex[i].size();
+//        cout<<" "<<PartiVertexNum[i];
+//        aveVnum += PartiVertexNum[i];
+//    }
+//    cout<<" ; Average vertex number: "<<aveVnum / partiNum<<endl;
+
+    for(int PID=0;PID<partiNum;PID++){
+        x=cr[PID];
+        for(int i=0;i<NeighborCon[x].size();++i){//for each root vertex
+            ID1 = NeighborCon[x][i].first;
+
+            for(int j=i+1;j<NeighborCon[x].size();++j){
+                ID2 = NeighborCon[x][j].first;
+                if(ID1<ID2){
+                    if(SuppPartiID[ID1].find(ID2)==SuppPartiID[ID1].end()){//if we cannot find ID2
+                        SuppPartiID[ID1][ID2]=map<int,int>();
+//                        SuppPartiID[ID2][ID1]=map<int,int>();
+                    }
+                    SuppPartiID[ID1][ID2].insert({PID,INF});
+//                    SuppPartiID[ID2][ID1].insert({PID,INF});
+                    for(auto it=SCconNodesMT[ID1][ID2].begin();it!=SCconNodesMT[ID1][ID2].end();++it){//for each supported vertex
+                        assert(AdjaCoreMap[ID1].find(ID2)!=AdjaCoreMap[ID1].end());//must exist
+                        assert(AdjaCoreMap[ID2].find(ID1)!=AdjaCoreMap[ID2].end());//must exist
+                        if(CoreTag[it->first] == PID){//if the contracted vertex belongs to PID
+                            if(SuppPartiID[ID1][ID2][PID] > it->second){
+                                SuppPartiID[ID1][ID2][PID] = it->second;
+//                                SuppPartiID[ID2][ID1][PID] = it->second;
+                            }
+
+                            if(SuppPartiIDReal[ID1].find(ID2) == SuppPartiIDReal[ID1].end()){
+                                SuppPartiIDReal[ID1][ID2]=make_pair(AdjaCoreMap[ID1][ID2],set<int>());
+//                                SuppPartiIDReal[ID2][ID1]=make_pair(AdjaCoreMap[ID1][ID2],set<int>());
+                            }
+                            if(AdjaCoreMap[ID1][ID2] == it->second){
+                                SuppPartiIDReal[ID1][ID2].second.insert(CoreTag[it->first]);
+//                                SuppPartiIDReal[ID2][ID1].second.insert(CoreTag[it->first]);
+                            }
+                        }
+
+                    }
+                }
+                else{
+                    if(SuppPartiID[ID2].find(ID1)==SuppPartiID[ID2].end()){//if we cannot find ID2
+//                        SuppPartiID[ID1][ID2]=map<int,int>();
+                        SuppPartiID[ID2][ID1]=map<int,int>();
+                    }
+                    SuppPartiID[ID2][ID1].insert({PID,INF});
+                    for(auto it=SCconNodesMT[ID2][ID1].begin();it!=SCconNodesMT[ID2][ID1].end();++it){//for each supported vertex
+                        assert(AdjaCoreMap[ID1].find(ID2)!=AdjaCoreMap[ID1].end());//must exist
+                        assert(AdjaCoreMap[ID2].find(ID1)!=AdjaCoreMap[ID2].end());//must exist
+                        if(CoreTag[it->first] == PID){//if the contracted vertex belongs to PID
+                            if(SuppPartiID[ID2][ID1][PID] > it->second){
+                                SuppPartiID[ID2][ID1][PID] = it->second;
+                            }
+
+                            if(SuppPartiIDReal[ID2].find(ID1) == SuppPartiIDReal[ID2].end()){
+                                SuppPartiIDReal[ID2][ID1]=make_pair(AdjaCoreMap[ID1][ID2],set<int>());
+                            }
+                            if(AdjaCoreMap[ID1][ID2] == it->second){
+                                SuppPartiIDReal[ID2][ID1].second.insert(CoreTag[it->first]);
+                            }
+                        }
+
+                    }
+                }
+
+            }
+        }
+    }
+    //clear useless variables
+    existCore.clear();
 
 }
 //Function of creating tree
@@ -461,7 +705,10 @@ void Graph::Create_tree(){
     }
     //clear useless variables
     existCore.clear();
-    NeighborCon.clear();
+    if(algoTree==1){
+        NeighborCon.clear();
+    }
+
 }
 //Function of tree-label index construction
 void Graph::Compute_tree_label(bool ifParallel){
@@ -492,7 +739,7 @@ void Graph::Compute_tree_label(bool ifParallel){
                     p.second=partiNum;
                 else
                     p.second=(i+1)*step;
-                if(strategy==3){
+                if(strategy==PostBoundary){
                     threadf.add_thread(new boost::thread(&Graph::TreeLabelCompute2, this, p, pidRanks));
                 }else{
                     threadf.add_thread(new boost::thread(&Graph::TreeLabelCompute, this, p, pidRanks));
@@ -503,7 +750,7 @@ void Graph::Compute_tree_label(bool ifParallel){
         }else{
             boost::thread_group threadf;
             for(int pid=0;pid<partiNum;++pid) {
-                if(strategy==3){
+                if(strategy==PostBoundary){
                     threadf.add_thread(new boost::thread(&Graph::TreeLabelCompute2, this, make_pair(pid,pid+1), pidRanks));
                 }else{
                     threadf.add_thread(new boost::thread(&Graph::TreeLabelCompute, this, make_pair(pid,pid+1), pidRanks));
@@ -796,7 +1043,7 @@ void Graph::TreeLabelCompute2(pair<int,int> pidRange, vector<int> & pidRanks)
         map<int,unordered_map<int,int>> disInfs;//distance from interface vertex u to another interface vertex v
         for(int i=0;i<Tree[rankRoot].vert.size();++i){
             ID1 = Tree[rankRoot].vert[i].first;
-            for(int j=i;j<Tree[rankRoot].vert.size();++j){
+            for(int j=i+1;j<Tree[rankRoot].vert.size();++j){
                 ID2 = Tree[rankRoot].vert[j].first;
                 int dis = INF;// dis might be INF
                 dis = QueryCore(ID1,ID2); //use the information from core
@@ -1176,7 +1423,20 @@ void Graph::insertECore(int u,int v,int w){
             E[v][u].second+=1;
     }
 }
-
+//compute the father tree node
+int Graph::matchCoreCH(int x,vector<pair<int,pair<int,int>>> &vert){
+    int nearest=vert[0].first;
+    for(int i=1;i<vert.size();i++){
+        if(NodeOrder[vert[i].first]<NodeOrder[nearest])//get the least node order
+            nearest=vert[i].first;
+    }
+    if(existCore[nearest])//if it exists in core, i.e., the pa of root vertex is 0
+        return -1;
+    else{
+        //cout<<nearest<<" "<<rankCore[nearest]<<endl;
+        return nearest;
+    }
+}
 //compute the father tree node
 int Graph::matchCore(int x,vector<pair<int,pair<int,int>>> &vert){
     int nearest=vert[0].first;
@@ -1190,7 +1450,6 @@ int Graph::matchCore(int x,vector<pair<int,pair<int,int>>> &vert){
         //cout<<nearest<<" "<<rankCore[nearest]<<endl;
         return rank[nearest];
     }
-
 }
 //construct RMQ index
 void Graph::makeRMQCore(){
@@ -1360,6 +1619,516 @@ int Graph::LCAQueryPartition(int _p, int _q, int PID){//space complexity and pre
 
 
 //// Index Maintenance
+
+void Graph::CHdecreaseBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
+    //maintain the index caused by the weight change
+    //NodeOrders.clear();
+//    NodeOrders.assign(NodeOrder.begin(),NodeOrder.end());
+    set<OrderComp2> OC;
+    map<pair<int,int>,int> OCdis;//{(s,t),d} maintain the fresh distance and avoid search in the adjacent list
+    //OC.clear(); OCdis.clear();
+
+    int a,b,newW;//the weight of (a,b) decrease to newW
+    for(int k=0;k<wBatch.size();k++){
+        a=wBatch[k].first.first;
+        b=wBatch[k].first.second;
+        newW=wBatch[k].second.second;
+
+        //modify the information in original graph
+        /*for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                Neighbor[a][i].second=newW;
+                break;
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                Neighbor[b][i].second=newW;
+                break;
+            }
+        }*/
+
+        if(NodeOrder[a]<NodeOrder[b]){
+            for(int i=0;i<NeighborCon[a].size();i++){
+                if(NeighborCon[a][i].first==b){
+                    if(NeighborCon[a][i].second.first>newW){//if new edge weight is smaller than old edge weight
+                        //cout<<OutNeighborCon[a][i].second.first<<"..........."<<newW<<endl;
+                        NeighborCon[a][i].second.first=newW;
+                        NeighborCon[a][i].second.second=1;
+
+                        OCdis[make_pair(a,b)]=newW;
+                        OC.insert(OrderComp2(a,b));
+                    }else if(NeighborCon[a][i].second.first==newW)
+                        NeighborCon[a][i].second.second+=1;
+                    break;
+                }
+            }
+        }else{
+            for(int i=0;i<NeighborCon[b].size();i++){
+                if(NeighborCon[b][i].first==a){
+                    if(NeighborCon[b][i].second.first>newW){//if new edge weight is smaller than old edge weight
+                        NeighborCon[b][i].second.first=newW;
+                        NeighborCon[b][i].second.second=1;
+
+                        OCdis[make_pair(b,a)]=newW;
+                        OC.insert(OrderComp2(b,a));
+                    }else if(NeighborCon[b][i].second.first==newW)
+                        NeighborCon[b][i].second.second+=1;
+                    break;
+                }
+            }
+        }
+    }
+
+//    cout<<"Flag 1"<<endl;
+    while(!OC.empty()){
+        int s=(*OC.begin()).x; int t=(*OC.begin()).y;
+        int wt;
+        OC.erase(OC.begin());
+        wt=OCdis[make_pair(s,t)];
+        /// deal with the shortcut update between interface vertices
+        if(CoreTag[s]==-1 && CoreTag[t]==-1){//if both are core vertices
+//            cout<<"Flag 2"<<endl;
+            assert(BoundTag[s].first && BoundTag[t].first);
+//            cout<<"Flag 3"<<endl;
+            if(wt < AdjaCoreMap[s][t]){
+//                cout<<"Flag 4"<<endl;
+//                cout<<"core edge decrease update: "<<s<<" "<<t<<" "<<AdjaCoreMap[s][t]<<" "<<wt<<endl;
+                AdjaCoreMap[s][t] = wt;
+                AdjaCoreMap[t][s] = wt;
+            }
+        }
+
+
+        map<int,int> InM2t; //InM2t.clear();
+        vector<pair<int,int>> InMLower; //InMLower.clear();
+        for(int i=0;i<NeighborCon[s].size();i++){
+            if(NodeOrder[NeighborCon[s][i].first]>NodeOrder[t])//if the neighbor of has higher order than t
+                InM2t.insert(make_pair(NeighborCon[s][i].first,NeighborCon[s][i].second.first));
+            else if(NodeOrder[NeighborCon[s][i].first]<NodeOrder[t])
+                InMLower.push_back(make_pair(NeighborCon[s][i].first,NeighborCon[s][i].second.first));
+        }
+        int inID,inW,inWt;
+        for(int i=0;i<NeighborCon[t].size();i++){
+            inID=NeighborCon[t][i].first;
+            if(InM2t.find(inID)!=InM2t.end()){//if found, i.e., inID is also t's neighbor
+                inW=InM2t[inID];
+                inWt=NeighborCon[t][i].second.first;
+                if(inWt>inW+wt){//if edge e(t, inID) needs to be updated
+                    NeighborCon[t][i].second.first=inW+wt;
+                    NeighborCon[t][i].second.second=1;
+                    OCdis[make_pair(t,inID)]=inW+wt;
+                    OrderComp2 oc={t,inID};
+                    OC.insert(oc);
+                }else if(inWt==inW+wt){
+                    NeighborCon[t][i].second.second+=1;
+                }
+            }
+        }
+
+        for(int i=0;i<InMLower.size();i++){
+            inID=InMLower[i].first; inW=InMLower[i].second;
+            for(int j=0;j<NeighborCon[inID].size();j++){
+                if(NeighborCon[inID][j].first==t){//if t is also inID's neighbor
+                    inWt=NeighborCon[inID][j].second.first;
+                    if(inWt>inW+wt){//if edge e(inID, t) needs to be updated
+                        NeighborCon[inID][j].second.first=inW+wt;
+                        NeighborCon[inID][j].second.second=1;
+
+                        OCdis[make_pair(inID,t)]=inW+wt;
+                        OrderComp2 oc={inID,t};
+                        OC.insert(oc);
+                    }else if(inWt==inW+wt)
+                        NeighborCon[inID][j].second.second+=1;
+                    break;
+                }
+            }
+        }
+    }//finish change index
+}
+
+void Graph::CHincreaseBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
+    //NodeOrders.clear();
+    set<OrderComp2> OC; //OC.clear();
+    map<pair<int,int>,int> OCdis;//{(s,t),d} maintain the old distance before refreshed and avoid search in the adjacent list
+    //OCdis.clear();
+    int pid;
+    for(int wb=0;wb<wBatch.size();wb++){
+        int a=wBatch[wb].first.first;
+        int b=wBatch[wb].first.second;
+        int oldW=wBatch[wb].second.first;
+        int newW=wBatch[wb].second.second;
+        pid=CoreTag[a];
+        //modify the original graph information
+        /*for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                Neighbor[a][i].second=newW;
+                break;
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                Neighbor[b][i].second=newW;
+                break;
+            }
+        }*/
+
+
+        if(NodeOrder[a]<NodeOrder[b]){
+            for(int i=0;i<NeighborCon[a].size();i++){
+                if(NeighborCon[a][i].first==b){
+                    if(NeighborCon[a][i].second.first==oldW){
+                        NeighborCon[a][i].second.second-=1;
+                        if(NeighborCon[a][i].second.second<1){//if the weight increase affect the shortcut weight
+                            OrderComp2 oc={a,b};
+                            OC.insert(oc);
+                            OCdis[make_pair(a,b)]=oldW;
+                        }
+                    }
+                    break;
+                }
+            }
+        }else{
+            for(int i=0;i<NeighborCon[b].size();i++){
+                if(NeighborCon[b][i].first==a){
+                    if(NeighborCon[b][i].second.first==oldW){
+                        NeighborCon[b][i].second.second-=1;
+                        if(NeighborCon[b][i].second.second<1){//if the weight increase affect the shortcut weight
+                            OrderComp2 oc={b,a};
+                            OC.insert(oc);
+                            OCdis[make_pair(b,a)]=oldW;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+//    cout<<"wBatch size: "<<wBatch.size()<<" ; pid: "<<pid<<endl;
+    set<pair<int,int>> SECoreForUpdate;//the set of shortcuts among interface vertices for updating, (s,t) (order[s]<order[t])
+    SECoreForUpdate.clear();
+
+    while(!OC.empty()){
+        int s=(*OC.begin()).x; int t=(*OC.begin()).y;
+        int wt;
+        OC.erase(OC.begin());
+        wt=OCdis[make_pair(s,t)];//distance of s--->t before change
+        /// deal with the shortcut update between interface vertices
+        if(CoreTag[s]==-1 && CoreTag[t]==-1){//if both are core vertices
+            assert(BoundTag[s].first && BoundTag[t].first);
+//            if(wt > AdjaCoreMap[s][t]){
+//                cout<<"core edge increase update: "<<s<<" "<<t<<" "<<AdjaCoreMap[s][t]<<" "<<wt<<endl;
+//                AdjaCoreMap[s][t] = wt;
+//                AdjaCoreMap[t][s] = wt;
+//            }
+
+            int oldTemp;
+            if(s<t){
+                oldTemp=AdjaCoreMap[s][t];
+            }else{
+                oldTemp=AdjaCoreMap[t][s];
+            }
+            if(wt==oldTemp){
+                //since we do not know whether e(Cid,hid) is only supported by wsum, we will check it after all in-periphery shortcuts are processed
+                SECoreForUpdate.insert(make_pair(s,t));
+            }
+            continue;
+        }
+        int inID,inW;
+        map<int,int> HigherIn; vector<pair<int,int>> LowerIn;
+        //HigherIn.clear(); LowerIn.clear();
+        //the shortcuts infected by s-->t
+        for(int i=0;i<NeighborCon[s].size();i++){
+            inID=NeighborCon[s][i].first;
+            inW=NeighborCon[s][i].second.first;
+            if(NodeOrder[inID]<NodeOrder[t]){
+                LowerIn.push_back(make_pair(inID,inW));
+            }else if(NodeOrder[inID]>NodeOrder[t]){
+                HigherIn.insert(make_pair(inID,inW));
+            }
+        }
+        for(int i=0;i<NeighborCon[t].size();i++){
+            inID=NeighborCon[t][i].first;
+            if(HigherIn.find(inID)!=HigherIn.end()){//if inID is the neighbor of both s and t
+                inW=HigherIn[inID];
+                if(NeighborCon[t][i].second.first==wt+inW){
+                    NeighborCon[t][i].second.second-=1;
+                    if(NeighborCon[t][i].second.second<1){
+                        OrderComp2 oc={t,inID};
+                        OC.insert(oc);
+                        OCdis[make_pair(t,inID)]=wt+inW;
+                    }
+                }
+            }
+        }
+        for(int i=0;i<LowerIn.size();i++){
+            inID=LowerIn[i].first; inW=LowerIn[i].second;
+            for(int j=0;j<NeighborCon[inID].size();j++){
+                if(NeighborCon[inID][j].first==t){//if inID is the neighbor of both s and t
+                    if(NeighborCon[inID][j].second.first==inW+wt){
+                        NeighborCon[inID][j].second.second-=1;
+                        if(NeighborCon[inID][j].second.second<1){
+                            OrderComp2 oc={inID,t};
+                            OC.insert(oc);
+                            OCdis[make_pair(inID,t)]=wt+inW;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+
+        //get the new weight value of s-->t
+        wt=INF; int countwt=0;
+        for(int i=0;i<Neighbor[s].size();i++){
+            if(Neighbor[s][i].first==t){
+                wt=Neighbor[s][i].second;//the weight value in the original graph
+                countwt=1;
+                break;
+            }
+        }
+        int ssw=INF,wtt=INF,wid;
+        vector<pair<int,int>> Wnodes;
+//        Wnodes=SCconNodesMT[s][t];
+        if(s<t){
+            Wnodes=SCconNodesMT[s][t];
+        }else{
+            Wnodes=SCconNodesMT[t][s];
+        }
+
+//        if(s==12449 && t==11556){
+//            cout<<"Find!! "<<s<<" "<<t<<" "<< Wnodes.size()<<endl;
+//        }
+
+        for(int i=0;i<Wnodes.size();i++){
+            wid=Wnodes[i].first;
+            for(int j=0;j<NeighborCon[wid].size();j++){
+                if(NeighborCon[wid][j].first==s){
+                    ssw=NeighborCon[wid][j].second.first;
+                }
+                if(NeighborCon[wid][j].first==t){
+                    wtt=NeighborCon[wid][j].second.first;
+                }
+            }
+
+            if(ssw+wtt<wt){
+                wt=ssw+wtt;
+                countwt=1;
+            }else if(ssw+wtt==wt){
+                countwt+=1;
+            }
+        }
+
+        //refresh the weight value of s--t in the index
+        for(int i=0;i<NeighborCon[s].size();i++){
+            if(NeighborCon[s][i].first==t){
+                NeighborCon[s][i].second.first=wt;
+                NeighborCon[s][i].second.second=countwt;
+                break;
+            }
+        }
+    }
+
+    /// Step 3: update the shortcuts among interface vertices
+
+//    cout<<"SECoreForUpdate size: "<<SECoreForUpdate.size()<<endl;
+    for(auto it=SECoreForUpdate.begin();it!=SECoreForUpdate.end();++it){
+        int lid=it->first; int hid=it->second;
+//        cout<<"Super edge: "<<lid<<"("<<CoreTag[lid]<<","<<NodeOrder[lid]<<")"<<" "<<hid<<"("<<CoreTag[hid]<<","<<NodeOrder[hid]<<")"<<endl;
+//            assert(SuppPartiID[lid].find(hid)!=SuppPartiID[lid].end());
+//            assert(!SuppPartiID[lid][hid].empty());
+
+//            if(lid == 142488 || hid == 143850){
+//                cout<<lid<<" "<<hid<<endl;
+//            }
+        int Cw=INF; int countwt=0;
+        for(int i=0;i<Neighbor[lid].size();i++){
+            if(Neighbor[lid][i].first==hid){
+                Cw=Neighbor[lid][i].second;//the weight value in the original graph
+                countwt=1;
+                break;
+            }
+        }
+        int ssw=INF,wtt=INF,wid=-1;
+        vector<pair<int,int>> Wnodes; //Wnodes.clear(); //Supportive vertices
+
+        /// calculate the correct value by traversing supportive vertices
+//            assert(SCconNodesMT[lid][hid].size() == SCconNodesMT[hid][lid].size());
+        if(lid<hid){
+            Wnodes=SCconNodesMT[lid][hid]; //cout<<"wid num "<<Wnodes.size()<<endl;
+        }else{
+            Wnodes=SCconNodesMT[hid][lid]; //cout<<"wid num "<<Wnodes.size()<<endl;
+        }
+
+
+        for(int i=0;i<Wnodes.size();i++){
+            wid=Wnodes[i].first;//wid must be periphery vertex
+//            cout<<wid<<"("<<CoreTag[wid]<<","<<NodeOrder[wid]<<")"<<endl;
+            assert(CoreTag[wid] != -1);
+
+            if(CoreTag[wid] != pid){
+                continue;
+            }
+
+            for(int j=0;j<NeighborCon[wid].size();j++){
+//                cout<<j<<": "<<NeighborCon[wid][j].first<<" "<<NeighborCon[wid][j].second.first<<endl;
+                if(NeighborCon[wid][j].first==lid){//shortcut weight from wid to lid
+                    ssw=NeighborCon[wid][j].second.first;
+                }
+                if(NeighborCon[wid][j].first==hid){//shortcut weight from wid to hid
+                    wtt=NeighborCon[wid][j].second.first;
+                }
+            }
+            assert(ssw != INF);
+            assert(wtt != INF);
+            if(ssw+wtt<Cw){
+                Cw=ssw+wtt;
+                countwt=1;
+            }else if(ssw+wtt==Cw){
+                countwt+=1;
+            }
+        }
+
+//            cout<<"Core shortcut ("<<lid<<","<<hid<<"): "<<AdjaCoreMap[lid][hid]<<" "<<Cw<<endl;
+
+        //assign new super edge weight
+        assert(Cw < INF);
+        if(lid<hid){
+            if(SuppPartiIDReal[lid][hid].second.size() == 1){//if this super edge is only supported by this partition
+                assert(*SuppPartiIDReal[lid][hid].second.begin()==pid);
+                int tempDis=INF;
+                set<int> tempPids;
+                for(auto it=SuppPartiID[lid][hid].begin();it!=SuppPartiID[lid][hid].end();++it){
+                    if(it->first == pid){
+                        continue;
+                    }
+
+                    if(tempDis > it->second){
+                        tempDis = it->second;
+                        tempPids.clear();
+                        tempPids.insert(it->first);
+                    }else if(tempDis == it->second){
+                        tempPids.insert(it->first);
+                    }
+                }
+                //refresh the shortcut to the new value
+                if(tempDis <= Cw){
+//                    changedInterfaceEdges[lid][hid]=AdjaCoreMap[lid][hid];
+//                    changedInterfaceEdges[hid][lid]=AdjaCoreMap[hid][lid];
+
+                    AdjaCoreMap[lid][hid]=tempDis;
+//                        AdjaCoreMap[hid][lid]=tempDis;
+
+                    if(tempDis == Cw){
+                        tempPids.insert(pid);
+                    }
+                    SuppPartiIDReal[lid][hid].first = tempDis;
+//                        SuppPartiIDReal[hid][lid].first = tempDis;
+                    SuppPartiIDReal[lid][hid].second = tempPids;
+//                        SuppPartiIDReal[hid][lid].second = tempPids;
+                }else{//if tempDis > Cw
+                    if(Cw > SuppPartiID[lid][hid][pid]){
+//                        changedInterfaceEdges[lid][hid]=AdjaCoreMap[lid][hid];
+//                        changedInterfaceEdges[hid][lid]=AdjaCoreMap[hid][lid];
+                        AdjaCoreMap[lid][hid]=Cw;
+//                            AdjaCoreMap[hid][lid]=Cw;
+
+//                        tempPids.clear();
+//                        tempPids.insert(pid);
+                        SuppPartiIDReal[lid][hid].first = Cw;
+//                            SuppPartiIDReal[hid][lid].first = Cw;
+//                        SuppPartiIDReal[lid][hid].second = tempPids;
+//                        SuppPartiIDReal[hid][lid].second = tempPids;
+                    }
+                }
+            }
+            else if(SuppPartiIDReal[lid][hid].second.size() > 1){//if this super edge is supported by more than one partition
+                if(SuppPartiIDReal[lid][hid].second.find(pid) != SuppPartiIDReal[lid][hid].second.end()){//if found
+                    if(Cw > SuppPartiIDReal[lid][hid].first){
+                        SuppPartiIDReal[lid][hid].first = Cw;
+//                            SuppPartiIDReal[hid][lid].first = Cw;
+                        SuppPartiIDReal[lid][hid].second.erase(pid);
+//                            SuppPartiIDReal[hid][lid].second.erase(pid);
+                    }
+                }
+            }
+            SuppPartiID[lid][hid][pid] = Cw;
+//                SuppPartiID[hid][lid][pid] = Cw;
+
+//            ///identify the affected partitions
+//            if(SuppPartiID[lid][hid].size()>1){
+//                for(auto it=SuppPartiID[lid][hid].begin();it!=SuppPartiID[lid][hid].end();++it){
+//                    if(it->first != pid){
+//                        affectedParti.insert(it->first);
+////                        cout<<"affected parti: "<<it->first<<endl;
+//                    }
+//                }
+//            }
+        }
+        else{
+            if(SuppPartiIDReal[hid][lid].second.size() == 1){//if this super edge is only supported by this partition
+                assert(*SuppPartiIDReal[hid][lid].second.begin()==pid);
+                int tempDis=INF;
+                set<int> tempPids;
+                for(auto it=SuppPartiID[hid][lid].begin();it!=SuppPartiID[hid][lid].end();++it){
+                    if(it->first == pid){
+                        continue;
+                    }
+
+                    if(tempDis > it->second){
+                        tempDis = it->second;
+                        tempPids.clear();
+                        tempPids.insert(it->first);
+                    }else if(tempDis == it->second){
+                        tempPids.insert(it->first);
+                    }
+                }
+                //refresh the shortcut to the new value
+                if(tempDis <= Cw){
+//                    changedInterfaceEdges[lid][hid]=AdjaCoreMap[lid][hid];
+//                    changedInterfaceEdges[hid][lid]=AdjaCoreMap[hid][lid];
+
+//                        AdjaCoreMap[lid][hid]=tempDis;
+                    AdjaCoreMap[hid][lid]=tempDis;
+
+                    if(tempDis == Cw){
+                        tempPids.insert(pid);
+                    }
+                    SuppPartiIDReal[hid][lid].first = tempDis;
+                    SuppPartiIDReal[hid][lid].second = tempPids;
+                }else{//if tempDis > Cw
+                    if(Cw > SuppPartiID[hid][lid][pid]){
+
+                        AdjaCoreMap[hid][lid]=Cw;
+
+                        SuppPartiIDReal[hid][lid].first = Cw;
+                    }
+                }
+            }
+            else if(SuppPartiIDReal[hid][lid].second.size() > 1){//if this super edge is supported by more than one partition
+                if(SuppPartiIDReal[hid][lid].second.find(pid) != SuppPartiIDReal[hid][lid].second.end()){//if found
+                    if(Cw > SuppPartiIDReal[hid][lid].first){
+                        SuppPartiIDReal[hid][lid].first = Cw;
+                        SuppPartiIDReal[hid][lid].second.erase(pid);
+                    }
+                }
+            }
+            SuppPartiID[hid][lid][pid] = Cw;
+
+//            ///identify the affected partitions
+//            if(SuppPartiID[hid][lid].size()>1){
+//                for(auto it=SuppPartiID[hid][lid].begin();it!=SuppPartiID[hid][lid].end();++it){
+//                    if(it->first != pid){
+//                        affectedParti.insert(it->first);
+////                        cout<<"affected parti: "<<it->first<<endl;
+//                    }
+//                }
+//            }
+        }
+
+    }
+}
 
 void Graph::DecreaseCHNew(int a,int b, int newW, vector<vector<pair<vertex,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax){// Neighbors is useless in edge decrease update
     map<int,int> checkedDis;//map<tree node ID, distance index>
@@ -1579,13 +2348,13 @@ void Graph::DecreaseCHNew(int a,int b, int newW, vector<vector<pair<vertex,int>>
                                             ProBeginIDInf.insert(lid);
                                         }
                                         /// interface
-                                        if(CoreTag[vertid] == -1){//if the neighbor is interface vertex, never enter this branch
-                                            assert(Tree[rank[lid]].disInf.find(vertid) != Tree[rank[lid]].disInf.end());
-                                            if(Tree[rank[lid]].disInf[vertid] > wsum){
-                                                Tree[rank[lid]].DisReInf.insert(vertid);//record the vertex id that the interface label should be updated
-//                                                Tree[rank[lid]].disInf[vertid] = wsum;
-                                            }
-                                        }
+//                                        if(CoreTag[vertid] == -1){//if the neighbor is interface vertex, never enter this branch
+//                                            assert(Tree[rank[lid]].disInf.find(vertid) != Tree[rank[lid]].disInf.end());
+//                                            if(Tree[rank[lid]].disInf[vertid] > wsum){
+//                                                Tree[rank[lid]].DisReInf.insert(vertid);//record the vertex id that the interface label should be updated
+////                                                Tree[rank[lid]].disInf[vertid] = wsum;
+//                                            }
+//                                        }
                                     }else if(Tree[rank[lid]].vert[k].second.first==wsum){
                                         Tree[rank[lid]].vert[k].second.second+=1;
                                     }
@@ -1599,13 +2368,13 @@ void Graph::DecreaseCHNew(int a,int b, int newW, vector<vector<pair<vertex,int>>
                 }
 
 //                if(Tree[rank[ProID]].dis[cidH]>=Cw){//if the distance to ancestor Cid has changed
-                if(Tree[rank[ProID]].dis[cidH]>Cw){//if the distance to ancestor Cid has changed
-                    Tree[rank[ProID]].dis[cidH]=Cw;
-                    Tree[rank[ProID]].FN[cidH]=true;
-                    ProIDdisCha=true;
-                    Tree[rank[ProID]].DisRe.insert(Cid);//record the vertex id that the distance label should be updated
-                    //DisRe[rank[ProID]].insert(Cid); //cout<<"dischange Cid "<<Cid<<endl;
-                }
+//                if(Tree[rank[ProID]].dis[cidH]>Cw){//if the distance to ancestor Cid has changed
+//                    Tree[rank[ProID]].dis[cidH]=Cw;
+//                    Tree[rank[ProID]].FN[cidH]=true;
+//                    ProIDdisCha=true;
+//                    Tree[rank[ProID]].DisRe.insert(Cid);//record the vertex id that the distance label should be updated
+//                    //DisRe[rank[ProID]].insert(Cid); //cout<<"dischange Cid "<<Cid<<endl;
+//                }
 //                else if(Tree[rank[ProID]].dis[cidH]==Cw){
 //                    cout<<"Equal distance............."<<endl;
 //                }
@@ -1623,20 +2392,20 @@ void Graph::DecreaseCHNew(int a,int b, int newW, vector<vector<pair<vertex,int>>
                                 MinH=Tree[rank[Cid]].height;
 
                             /// interface
-                            if(CoreTag[hid] == -1){//if the neighbor is interface vertex
-                                assert(Tree[rank[Cid]].disInf.find(hid) != Tree[rank[Cid]].disInf.end());
-                                if(Tree[rank[Cid]].disInf[hid] > wsum){
-                                    Tree[rank[Cid]].DisReInf.insert(hid);//record the vertex id that the interface label should be updated
-                                    if(Tree[rank[Cid]].height<MinHInf){
-                                        MinHInf = Tree[rank[Cid]].height;
-                                        ProBeginIDInf.clear();
-                                        ProBeginIDInf.insert(Cid);
-                                    }else if(Tree[rank[Cid]].height==MinHInf){
-                                        ProBeginIDInf.insert(Cid);
-                                    }
-//                                    Tree[rank[Cid]].disInf[hid] = wsum;
-                                }
-                            }
+//                            if(CoreTag[hid] == -1){//if the neighbor is interface vertex
+//                                assert(Tree[rank[Cid]].disInf.find(hid) != Tree[rank[Cid]].disInf.end());
+//                                if(Tree[rank[Cid]].disInf[hid] > wsum){
+//                                    Tree[rank[Cid]].DisReInf.insert(hid);//record the vertex id that the interface label should be updated
+//                                    if(Tree[rank[Cid]].height<MinHInf){
+//                                        MinHInf = Tree[rank[Cid]].height;
+//                                        ProBeginIDInf.clear();
+//                                        ProBeginIDInf.insert(Cid);
+//                                    }else if(Tree[rank[Cid]].height==MinHInf){
+//                                        ProBeginIDInf.insert(Cid);
+//                                    }
+////                                    Tree[rank[Cid]].disInf[hid] = wsum;
+//                                }
+//                            }
                         }else if(wsum==Tree[rank[Cid]].vert[j].second.first){
                             Tree[rank[Cid]].vert[j].second.second+=1;
                         }
@@ -1857,13 +2626,13 @@ void Graph::IncreaseCHNew(int a,int b, int oldW, int newW, vector<vector<pair<ve
                                             }
 
                                             OCdis[make_pair(lid,Cid)]=Cw+Lnei[j].second;//old shortcut distance
-                                            if(Tree[rank[lid]].height<MinHInf){
-                                                MinHInf = Tree[rank[lid]].height;
-                                                ProBeginIDInf.clear();
-                                                ProBeginIDInf.insert(lid);
-                                            }else if(Tree[rank[lid]].height==MinHInf){
-                                                ProBeginIDInf.insert(lid);
-                                            }
+//                                            if(Tree[rank[lid]].height<MinHInf){
+//                                                MinHInf = Tree[rank[lid]].height;
+//                                                ProBeginIDInf.clear();
+//                                                ProBeginIDInf.insert(lid);
+//                                            }else if(Tree[rank[lid]].height==MinHInf){
+//                                                ProBeginIDInf.insert(lid);
+//                                            }
 //                                            /// interface
 //                                            if(CoreTag[vertid] == -1){//if the neighbor is interface vertex, never enter this branch
 //                                                assert(Tree[rank[lid]].disInf.find(vertid) != Tree[rank[lid]].disInf.end());
