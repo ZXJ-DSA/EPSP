@@ -23,7 +23,7 @@ idx_t objval; // edge cut for partitioning solution
 idx_t* part; // array of partition vector
 idx_t options[METIS_NOPTIONS]; // option array
 
-void Gtree::PathInit(bool ifMac){
+void Gtree::PathInit(){
     if(ifParallel) {
         cout<<"With multi-thread computation!"<<endl;
 //	    cout<<"Thread number: "<<gt.threadnum<<endl;
@@ -31,21 +31,7 @@ void Gtree::PathInit(bool ifMac){
     else {
         cout << "Without multi-thread computation!" << endl;
     }
-    if(dataset == "cal"){
-        if(ifMac){
-            DataPath = "/Users/zhouxj/Documents/1-Research/1-Papers/0-My_Papers/2-EPSP/GTree-master/src/gtree/";
-        }
-//        else{
-//            DataPath = "/home/s4451682/Xinjie/Hier_PLL/";
-//        }
-    }else{
-        if(ifMac){
-            DataPath = "/Users/zhouxj/Documents/1-Research/Datasets/";
-        }
-//        else{
-//            DataPath = "/media/TraminerData/s4451682/GraphDataforPartition/Processed/";
-//        }
-    }
+
     FILE_NODE = dataset + ".cnode";//const
     FILE_EDGE = dataset + ".cedge";
 // gtree index disk storage
@@ -417,7 +403,22 @@ void Gtree::build(){
 
     }
 
-
+    //For direct query processing
+//    for ( int i = 0; i < Nodes.size(); i++ ){
+//        int count = Nodes[i].gtreepath.size();
+//        Nodes[i].inleaf=Nodes[i].gtreepath[count-1];
+//        Nodes[i].deep = count;
+//    }
+//
+//    int ID;
+//    for (int i = 0; i < GTree.size(); i++) {
+//        if(GTree[i].isleaf){
+//            for(int j=0;j<GTree[i].leafnodes.size();++j){
+//                ID=GTree[i].leafnodes[j];
+//                Nodes[ID].inleafpos = j;
+//            }
+//        }
+//    }
 }
 
 // dump gtree index to file
@@ -1051,14 +1052,14 @@ void Gtree::hierarchy_shortest_path_calculation(bool ifParallel){
     set<int> nset;
 
     if(ifParallel){/// multi-thread
-        int threadnum = 0;
-        cout<<"Thread number: "<<THREAD_LIMIT<<endl;
+        int threadnum = thread_num;
+        cout<<"Thread number: "<<threadnum<<endl;
         vector<vector<int>> tnVector(threadnum);
         vector<vector<unordered_map<int, unordered_map<int,int> >>> vertex_pairsVV;//result of distance matrix
         for ( int i = treenodelevel.size() - 1; i >= 0; i-- ){//start from the lowest level
             boost::thread_group threadf;
-            if(treenodelevel[i].size() > THREAD_LIMIT){
-                threadnum = THREAD_LIMIT;
+            if(treenodelevel[i].size() > thread_num){
+                threadnum = thread_num;
             }else{
                 threadnum = treenodelevel[i].size();
             }
@@ -1245,8 +1246,8 @@ void Gtree::hierarchy_shortest_path_calculate( bool ifParallel){
         vector<vector<unordered_map<int, unordered_map<int,int> >>> vertex_pairsVV;//result of distance matrix
         for ( int i = treenodelevel.size() - 2; i >= 0; i-- ){//start from the lowest level
             boost::thread_group threadf;
-            if(treenodelevel[i].size() > THREAD_LIMIT){
-                threadnum = THREAD_LIMIT;
+            if(treenodelevel[i].size() > thread_num){
+                threadnum = thread_num;
             }else{
                 threadnum = treenodelevel[i].size();
             }
@@ -1634,7 +1635,7 @@ void Gtree::load_minds(){
         for ( int i = 0; i < count; i++ ){
             GTree[pos].mind.push_back(buf[i]);
         }
-        if(pos==5061){
+//        if(pos==5061){
 //            int i=0;
 //            int span = GTree[pos].leafnodes.size();
 //            for(auto it=GTree[pos].mind.begin();it!=GTree[pos].mind.end();++it){
@@ -1648,15 +1649,13 @@ void Gtree::load_minds(){
 //            cout<<GTree[pos].mind.size()<<endl;
 //            int leafposID1=4,leafposID2=0;
 //            cout<<GTree[pos].mind[leafposID2*span + leafposID1]<<" "<<GTree[pos].mind[leafposID1*span + leafposID2]<<" (old); "<<endl;
-        }
+//        }
         pos++;
         delete[] buf;
     }
     fclose(fin);
     cout << "Done." << endl;
 }
-
-
 
 //build G-Tree
 int Gtree::gtree_build(bool ifParallel){
@@ -1705,7 +1704,6 @@ int Gtree::gtree_build(bool ifParallel){
 
     return 0;
 }
-
 //Function for generating random queries
 void Gtree::ODpairGenerate(int times){
     string RandomDis = string(DataPath) + "/" + dataset + "/" + FILE_QUERY;
@@ -1757,7 +1755,6 @@ void Gtree::ODpairGenerate(int times){
     outFile.close();
     cout << "Finished." << endl;
 }
-
 //Function for generating update edges
 void Gtree::UpdateGenerate(int times){
     string filename = string(DataPath) + "/" + dataset + "/" + FILE_UPDATE;
@@ -1811,7 +1808,6 @@ void Gtree::UpdateGenerate(int times){
     outFile.close();
     cout << "Finished." << endl;
 }
-
 //Function of in-memory Dijkstra's algorithm
 Distance Gtree::Dijkstra(NodeId s, NodeId t, vector<Node> & Nodes) { // second version, powered by benchmark::heap
     if (s == t) return 0;
@@ -1857,7 +1853,7 @@ Distance Gtree::Dijkstra(NodeId s, NodeId t, vector<Node> & Nodes) { // second v
     return min_cost;
 }
 //function of reading update edges
-void Gtree::ReadUpdates(string filename){
+void Gtree::ReadUpdates(string filename, vector<pair<pair<int,int>,int>>& updateEdges){
     int ID1, ID2, weight;
     ifstream inFile(filename, ios::in);
     if (!inFile) { // if not exist
@@ -1923,8 +1919,213 @@ inline int Gtree::find_LCA_pos(int src, int dst) {
     }
     return 0;
 }
-// heap-based dijkstra search for updating the leaf nodes
+// std priority queue-based dijkstra search for updating the leaf nodes
 bool Gtree::dijkstra_candidate_update(int ID1, int ID1_pos, vector<int> &cands, vector<Node> &graph){//vector<pair<pair<int,int>,pair<int,int>>> & borderShortcuts
+    // init
+    bool borderUpdate = false;
+    set<int> todo;
+    todo.clear();
+    todo.insert(cands.begin(), cands.end());//get the partition vertex set
+
+    map<int,int> result;
+    result.clear();
+    unordered_set<int> visited;
+    visited.clear();
+//    unordered_map<int,int> q;//map used for mapping vertex id to its distance from source vertex
+//    benchmark::heap<2, int, int> q(node_num);
+    priority_queue<pair<int,int>,vector<pair<int,int>>,greater<pair<int,int>>> q;
+//    vector<bool> closed(node_num, false); //flag vector of whether closed
+    vector<Distance> cost(node_num, INF);   //vector of cost
+    int temp_dis;
+    q.push(make_pair(0,ID1));
+    cost[ID1] = 0;
+    // start
+    int min, minpos, ID2, weight;
+    pair<int,int> topE;
+    while( ! todo.empty() && ! q.empty() ){
+        min = -1;
+        topE=q.top();
+        min=topE.first; minpos=topE.second;
+        q.pop();
+        while(visited.find(minpos)!=visited.end()){//if found
+            if(!q.empty()){
+                topE=q.top();
+                min=topE.first; minpos=topE.second;
+                q.pop();
+            }else{
+                cout<<"priority queue empty."<<endl;
+                goto Results;
+            }
+        }
+        // put min to result, add to visited
+        if(visited.find(minpos)==visited.end()){//if not found
+            result[minpos] = min;
+            visited.insert( minpos );
+        }else{
+            cout<<"Wrong!"<<endl; exit(1);
+        }
+
+//        q.erase(minpos);
+        if ( todo.find( minpos ) != todo.end() ){//if found, erase visited vertex
+            todo.erase( minpos );
+        }
+        // expand on graph (the original graph)
+        for ( int i = 0; i < graph[minpos].adjnodes.size(); i++ ){
+            ID2 = graph[minpos].adjnodes[i];
+            if ( visited.find( ID2 ) != visited.end() ){//if found, ie, it is visited
+                continue;
+            }
+            weight = graph[minpos].adjweight[i];//edge weight
+            temp_dis = min + weight;
+            if ( temp_dis < cost[ID2] ){
+                q.push(make_pair(temp_dis,ID2));
+                cost[ID2] = temp_dis;
+            }
+        }
+    }
+    /// update
+    Results:
+    int nid, ID2_pos;
+    int oldW;
+    nid = graph[ID1].inleaf;
+    assert(GTree[nid].isleaf);
+    int span = GTree[nid].leafnodes.size();
+    for ( int i = 0; i < cands.size(); i++ ){
+        ID2 = cands[i];
+        ID2_pos = graph[ID2].inleafpos;
+        assert(ID2_pos == i);
+        if(result[ID2] != GTree[nid].mind[ID1_pos*span + ID2_pos]){//if there is update
+//            if(ifDebug){
+//                oldW = GTree[nid].mind[ID1_pos*span + ID2_pos];
+//                int temp_dis = Dijkstra(ID1,ID2,NodesO);
+//                if(temp_dis != oldW)
+//                    cout<<"Leaf node old incorrect: "<<ID1<<" "<<ID2<<": "<<oldW<<" "<<temp_dis<<endl;
+//                temp_dis = Dijkstra(ID1,ID2,graph);
+//                if(temp_dis != result[ID2])
+//                    cout<<"Leaf node new incorrect: "<<ID1<<" "<<ID2<<": "<<result[ID2]<<" "<<temp_dis<<endl;
+////            cout<<ID1<<" "<<ID2<<": "<<oldW<<" (old); "<<result[ID2]<<" (new)."<<endl;
+//            }
+            GTree[nid].mind[ID1_pos*span + ID2_pos] = result[ID2];
+            if(graph[ID2].isborder){//if it is border
+//                borderShortcuts.emplace_back(make_pair(ID1,ID2), make_pair(oldW,result[ID2]));//add
+                borderUpdate = true;
+//                    cout<<"!!! "<<ID1<<" "<<ID2<<endl;
+            }
+        }
+    }
+    // return
+    return borderUpdate;//vector of distance matrix values
+}
+// std priority queue-based dijkstra search for updating the non-leaf nodes
+bool Gtree::dijkstra_candidate_update(int ID1, int ID1_pos, int nid, vector<int> &cands, vector<Node> &graph, unordered_set<int> & borderSet){// vector<pair<pair<int,int>,pair<int,int>>> & borderShortcuts,
+    // init
+    bool borderUpdate = false;
+    set<int> todo;
+    todo.clear();
+    todo.insert(cands.begin(), cands.end());//get the partition vertex set
+
+    map<int,int> result;
+    result.clear();
+    unordered_set<int> visited;
+    visited.clear();
+//    unordered_map<int,int> q;//map used for mapping vertex id to its distance from source vertex
+//    benchmark::heap<2, int, int> q(node_num);
+    priority_queue<pair<int,int>,vector<pair<int,int>>,greater<pair<int,int>>> q;
+//    vector<bool> closed(node_num, false); //flag vector of whether closed
+    vector<Distance> cost(node_num, INF);   //vector of cost
+    int temp_dis;
+    q.push(make_pair(0,ID1));
+    cost[ID1] = 0;
+    // start
+    int min, minpos, ID2, weight;
+    pair<int,int> topE;
+    while( ! todo.empty() && ! q.empty() ){
+        min = -1;
+        topE=q.top();
+        min=topE.first; minpos=topE.second;
+        q.pop();
+        while(visited.find(minpos)!=visited.end()){//if found
+            if(!q.empty()){
+                topE=q.top();
+                min=topE.first; minpos=topE.second;
+                q.pop();
+            }else{
+                cout<<"priority queue empty."<<endl;
+                goto Results;
+            }
+        }
+        // put min to result, add to visited
+        if(visited.find(minpos)==visited.end()){//if not found
+            result[minpos] = min;
+            visited.insert( minpos );
+        }else{
+            cout<<"Wrong!"<<endl; exit(1);
+        }
+
+//        q.erase(minpos);
+        if ( todo.find( minpos ) != todo.end() ){//if found, erase visited vertex
+            todo.erase( minpos );
+        }
+        // expand on graph (the original graph)
+        for ( int i = 0; i < graph[minpos].adjnodes.size(); i++ ){
+            ID2 = graph[minpos].adjnodes[i];
+            if ( visited.find( ID2 ) != visited.end() ){//if found, ie, it is visited
+                continue;
+            }
+            weight = graph[minpos].adjweight[i];//edge weight
+            temp_dis = min + weight;
+            if ( temp_dis < cost[ID2] ){
+                q.push(make_pair(temp_dis,ID2));
+                cost[ID2] = temp_dis;
+            }
+        }
+    }
+    /// update
+    Results:
+    int ID2_pos;
+    int oldW;
+    bool flag_border = false;
+    if(borderSet.find(ID1)!=borderSet.end()){
+        flag_border = true;
+    }
+    int span = GTree[nid].union_borders.size();
+//    if(span!=cands.size())
+//        cout<<"!!!"<<endl;
+    for ( int i = 0; i < cands.size(); i++ ){
+        ID2 = cands[i];
+        ID2_pos = ID1_pos+1+i;
+//        if(ID1==ID2)
+//            continue;
+        if(result[ID2] != GTree[nid].mind[ID1_pos*span + ID2_pos]){//if there is update
+//            if(ifDebug){
+//                oldW = GTree[nid].mind[ID1_pos*span + ID2_pos];
+//                int temp_dis = Dijkstra(ID1,ID2,NodesO);
+//                if(temp_dis != oldW)
+//                    cout<<"Non leaf node old incorrect: "<<ID1<<" "<<ID2<<": "<<oldW<<" "<<temp_dis<<endl;
+//                temp_dis = Dijkstra(ID1,ID2,graph);
+//                if(temp_dis != result[ID2])
+//                    cout<<"Non leaf node new incorrect: "<<ID1<<" "<<ID2<<": "<<result[ID2]<<" "<<temp_dis<<endl;
+////                cout<<ID1<<" "<<ID2<<": "<<oldW<<" (old); "<<result[ID2]<<" (new)."<<endl;
+//                if(GTree[nid].mind[ID1_pos*span + ID2_pos] != GTree[nid].mind[ID2_pos*span + ID1_pos])
+//                    cout<<"!!! Original Distance matrix incorrect"<<endl;
+//            }
+
+            GTree[nid].mind[ID1_pos*span + ID2_pos] = result[ID2];
+            GTree[nid].mind[ID2_pos*span + ID1_pos] = result[ID2];
+            if(flag_border){// if ID1 is border
+                if(borderSet.find(ID2)!=borderSet.end()){//if ID2 is border too
+//                    borderShortcuts.emplace_back(make_pair(ID1,ID2), make_pair(oldW,result[ID2]));//add
+                    borderUpdate = true;
+//                    cout<<"!!! "<<ID1<<" "<<ID2<<endl;
+                }
+            }
+        }
+    }
+    // return
+    return borderUpdate;//vector of distance matrix values
+}
+// heap-based dijkstra search for updating the leaf nodes
+/*bool Gtree::dijkstra_candidate_update(int ID1, int ID1_pos, vector<int> &cands, vector<Node> &graph){//vector<pair<pair<int,int>,pair<int,int>>> & borderShortcuts
     // init
     bool borderUpdate = false;
     set<int> todo;
@@ -2000,9 +2201,9 @@ bool Gtree::dijkstra_candidate_update(int ID1, int ID1_pos, vector<int> &cands, 
     }
     // return
     return borderUpdate;//vector of distance matrix values
-}
+}*/
 // heap-based dijkstra search for updating the non-leaf nodes
-bool Gtree::dijkstra_candidate_update(int ID1, int ID1_pos, int nid, vector<int> &cands, vector<Node> &graph, unordered_set<int> & borderSet){// vector<pair<pair<int,int>,pair<int,int>>> & borderShortcuts,
+/*bool Gtree::dijkstra_candidate_update(int ID1, int ID1_pos, int nid, vector<int> &cands, vector<Node> &graph, unordered_set<int> & borderSet){// vector<pair<pair<int,int>,pair<int,int>>> & borderShortcuts,
     // init
     bool borderUpdate = false;
     set<int> todo;
@@ -2089,7 +2290,7 @@ bool Gtree::dijkstra_candidate_update(int ID1, int ID1_pos, int nid, vector<int>
     }
     // return
     return borderUpdate;//vector of distance matrix values
-}
+}*/
 //function of contracting leaf node by adding shortcuts and removing inner nodes
 void Gtree::LeafNodeContract(int lnID, vector<Node> & graph, unordered_set<int> & leafsToCheck, unordered_set<int> & updatedLeafs){//  unordered_set<int> & updatedLeafs,
     /// deal with current leaf node
@@ -2133,12 +2334,12 @@ void Gtree::LeafNodeContract(int lnID, vector<Node> & graph, unordered_set<int> 
             ID2_pos = graph[t].inleafpos;
             graph[s].adjnodes.push_back( t );
             graph[s].adjweight.push_back( GTree[lnID].mind[k*nleafnode + ID2_pos]);
-            if(ifDebug){
-                int temp_dis = Dijkstra(s,t,Nodes);
-                if(temp_dis != GTree[lnID].mind[k*nleafnode + ID2_pos]){
-                    cout<<"Leaf node contraction error: "<<s<<" "<<t<<GTree[lnID].mind[k*nleafnode + ID2_pos]<<" "<<temp_dis<<endl;
-                }
-            }
+//            if(ifDebug){
+//                int temp_dis = Dijkstra(s,t,Nodes);
+//                if(temp_dis != GTree[lnID].mind[k*nleafnode + ID2_pos]){
+//                    cout<<"Leaf node contraction error: "<<s<<" "<<t<<GTree[lnID].mind[k*nleafnode + ID2_pos]<<" "<<temp_dis<<endl;
+//                }
+//            }
         }
     }
 }
@@ -2205,11 +2406,11 @@ void Gtree::NonLeafNodeContract(int tn, int level_i, vector<Node> & graph, unord
                 continue;
             graph[s].adjnodes.push_back( t );
             graph[s].adjweight.push_back( GTree[tn].mind[k*span + p] );
-            if(ifDebug){
-                int temp_dis = Dijkstra(s,t,graph);
-                if(temp_dis != GTree[tn].mind[k*span + p])
-                    cout<<"Non-Leaf node contraction error:  "<<s<<" "<<t<<": "<<temp_dis<<" "<<GTree[tn].mind[k*span + p]<<endl;
-            }
+//            if(ifDebug){
+//                int temp_dis = Dijkstra(s,t,graph);
+//                if(temp_dis != GTree[tn].mind[k*span + p])
+//                    cout<<"Non-Leaf node contraction error:  "<<s<<" "<<t<<": "<<temp_dis<<" "<<GTree[tn].mind[k*span + p]<<endl;
+//            }
         }
     }
 }
@@ -2478,8 +2679,8 @@ void Gtree::LeafLevelUpdate(vector<Node> & graph, unordered_set<int> & leafsToCh
     while(!leafsToCheck.empty()){//if not empty
         if(ifParallel){//multi-thread
             /// parallel computing by boost::thread_group
-            if(leafsToCheck.size()>THREAD_LIMIT){
-                threadnum = THREAD_LIMIT;
+            if(leafsToCheck.size()>thread_num){
+                threadnum = thread_num;
             }else{
                 threadnum = leafsToCheck.size();
             }
@@ -2540,8 +2741,8 @@ void Gtree::NonLeafLevelUpdate(vector<Node> & graph, int level_i,  vector< vecto
     while(!nodesToCheck.empty()){//if not empty
         if(ifParallel){//multi-thread
             /// parallel computing by boost::thread_group
-            if(nodesToCheck.size()>THREAD_LIMIT){
-                threadnum = THREAD_LIMIT;
+            if(nodesToCheck.size()>thread_num){
+                threadnum = thread_num;
             }else{
                 threadnum = nodesToCheck.size();
             }
@@ -2657,11 +2858,11 @@ void Gtree::UpdateUpwardsPropagate(vector<Node> & graph, unordered_set<int> & up
             break;
         }
     }
-    if(ifDebug){
-        if(level_h != level_l){
-            cout<<"The leaf nodes are in different tree levels! "<<level_h <<" "<<level_l<<endl;
-        }
-    }
+//    if(ifDebug){
+//        if(level_h != level_l){
+//            cout<<"The leaf nodes are in different tree levels! "<<level_h <<" "<<level_l<<endl;
+//        }
+//    }
     for (auto it = borderAffectedNodes.begin(); it != borderAffectedNodes.end(); ++it) {//get the nodesToCheck of father level
         int father = GTree[*it].father;
         level_i = nodeToLevel[*it];
@@ -2787,6 +2988,138 @@ void Gtree::UpdateUpwardsPropagate(vector<Node> & graph, unordered_set<int> & up
     }*/
 }
 
+void Gtree::GtreeIndexUpdate(vector<pair<pair<int,int>,pair<int,int> > > & updates, bool ifParallel){//update(<ID1,ID2>,oldW) vector<pair<pair<int,int>,int> > & updates,
+
+//    double ave_time = 0;
+    int ID1,ID2,oldW,newW;
+    vector<pair<pair<int,int>,pair<int,int> > > uWithinLeafNode;// edge update within the same leaf node (<ID1,ID2>,<oldW,newW>)
+    vector<pair<pair<int,int>,pair<int,int> > > uCrossLeafNode;// edge update among borders (<ID1,ID2>,<oldW,newW>)
+    vector<pair<pair<int,int>,pair<int,int> > > uAmongBorders;// edge/shortcut update among borders (<ID1,ID2>,<oldW,newW>)
+    bool flag_borderUpdate = false;//whether there is border update of leaf node
+//    Timer tt;
+//    tt.start();
+
+    for(int i=0;i<updates.size();++i){//for each edge update
+        ID1 = updates[i].first.first;
+        ID2 = updates[i].first.second;
+        oldW = updates[i].second.first;
+        newW = updates[i].second.second;
+
+//        cout<<ID1 << " "<<ID2<<" ("<<oldW<<"->"<<newW<<") "<<endl;
+        //update edge weight
+        for(int j=0;j<Nodes[ID1].adjnodes.size();j++){
+            if(Nodes[ID1].adjnodes[j]==ID2){
+                assert(Nodes[ID1].adjweight[j] == oldW);
+                Nodes[ID1].adjweight[j]=newW;
+                break;
+            }
+        }
+        for(int j=0;j<Nodes[ID2].adjnodes.size();j++){
+            if(Nodes[ID2].adjnodes[j]==ID1){
+                assert(Nodes[ID2].adjweight[j] == oldW);
+                Nodes[ID2].adjweight[j]=newW;
+                break;
+            }
+        }
+        //identify the edge type
+        if(Nodes[ID1].inleaf == Nodes[ID2].inleaf){//if it is an update within the leaf node
+            uWithinLeafNode.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+        }else{//if it is an update among the leaf nodes
+            uCrossLeafNode.emplace_back(make_pair(ID1,ID2),make_pair(oldW,newW));
+            uAmongBorders.emplace_back(make_pair(ID1,ID2),make_pair(oldW,newW));
+            flag_borderUpdate = true;
+        }
+    }
+//        cout<<"After update: "<<Dijkstra(759,760,Nodes)<<endl;
+    //// Method 1: directly reconstruct
+//        for(int i=0;i<GTree.size();++i){
+//            GTree[i].mind.clear();
+//        }
+//        hierarchy_shortest_path_calculation(ifParallel);
+
+    //// Method 2: process updates within leaf node with pruning strategy, and reconstruct non-leaf nodes
+    /// update processing
+    int lnID;
+//        int ID1_pos,ID2_pos;
+    vector<Node> graph;//temp graph
+    graph = Nodes;//original graph
+
+    bool borderUpdate = false;
+    int nleafnode;
+    unordered_set<int> nodesToCheck;//the set of leaf nodes for update checking
+    nodesToCheck.clear();
+    unordered_set<int> leafsToCheck;//the set of leaf nodes for update checking
+    leafsToCheck.clear();
+    unordered_set<int> updatedNodes;//the set of all updated nodes
+    updatedNodes.clear();
+    unordered_set<int> borderAffectedNodes;
+    borderAffectedNodes.clear();
+    vector<int> cands;
+
+    /// Update the leaf nodes
+    Timer tt1;
+    tt1.start();
+    // for update within the same leaf node
+    if(!uWithinLeafNode.empty()){
+        for(auto it=uWithinLeafNode.begin();it!=uWithinLeafNode.end();++it){//deal with each update within leaf node
+            ID1 = it->first.first; ID2 = it->first.second; oldW = it->second.first; newW = it->second.second;
+            assert(Nodes[ID1].inleaf == Nodes[ID2].inleaf);
+            lnID = Nodes[ID1].inleaf;//get the leaf node id
+            /// insert the pending update leaf node
+            if(leafsToCheck.find(lnID) == leafsToCheck.end()){//if not found
+                leafsToCheck.insert(lnID);
+            }
+        }
+    }
+    // for update among leaf nodes, a naive idea is that we can identify the affected area firstly, and propagate updates to other area (leaf nodes) if the border of this area is updated.
+    int lca = -1;
+    bool flag_cross = false;
+    if(!uCrossLeafNode.empty()){
+        flag_cross = true;
+        vector<int> path_a, path_b;
+        ///identify the affected area caused by cross-leaf edge updates
+        for(int i=0;i<uCrossLeafNode.size();++i){
+            ID1 = uCrossLeafNode[i].first.first; ID2 = uCrossLeafNode[i].first.second; oldW = uCrossLeafNode[i].second.first; newW = uCrossLeafNode[i].second.second;
+            path_a = Nodes[ID1].gtreepath, path_b = Nodes[ID2].gtreepath;
+            lca = path_a[find_LCA_pos(ID1,ID2)];
+            //identify the affected area
+            if(GTree[lca].isleaf){//if it is leaf node
+                if(leafsToCheck.find(lca) == leafsToCheck.end()){//if not found
+                    leafsToCheck.insert(lca);
+                }
+            }else{//if it is non-leaf node
+                nodesToCheck.insert(lca);
+                GetChildNodes(lca, nodesToCheck, leafsToCheck, updatedNodes);
+            }
+
+        }
+    }
+    // update leaf nodes
+    borderAffectedNodes.clear();
+    LeafLevelUpdate(graph,leafsToCheck,updatedNodes, borderAffectedNodes, ifParallel);//incorrect for parallel version
+    tt1.stop();
+//        cout<<"The time of leaf nodes updating: "<<tt1.GetRuntime()<<" s."<<endl;
+
+    if(flag_cross){
+//            cout<<nodesToCheck.size()<<endl;
+        assert(!nodesToCheck.empty());
+    }
+
+    /// Update non-leaf nodes
+    tt1.start();
+    if(!borderAffectedNodes.empty() || !nodesToCheck.empty()){
+        hierarchy_shortest_path_calculate(ifParallel);//correct. ifParallel
+//            UpdateUpwardsPropagate(graph, updatedNodes,borderAffectedNodes, ifParallel, lca, nodesToCheck);//incorrect
+    }
+    tt1.stop();
+//        cout<<"The time used for propagating updates to upper levels: "<<tt1.GetRuntime()<<" s."<<endl;
+
+//        cout<<"Done."<<endl;
+//    tt.stop();
+//    cout<<"The time used for updating: "<<tt.GetRuntime()<<" s."<<endl;
+//    ave_time += tt.GetRuntime();
+
+}
 
 //function of dealing with batch edge increase update of G-tree
 void Gtree::GtreeUpdateParalel(int updateType, int updateVolume, int updateBatch, bool ifParallel){//update(<ID1,ID2>,oldW) vector<pair<pair<int,int>,int> > & updates,
@@ -2794,14 +3127,13 @@ void Gtree::GtreeUpdateParalel(int updateType, int updateVolume, int updateBatch
     init_update();
     // read updates
     string file = string(DataPath) + "/" + dataset + "/" + FILE_UPDATE;
-    ReadUpdates(file);
+    vector<pair<pair<int,int>,int> >  updates;
+    ReadUpdates(file,updates);
 
     cout<<"Processing updates... "<<endl;
     //duplicate G-tree
 
-    if(ifDebug){
-        CorrectnessCheck(100);
-    }
+
     double ave_time = 0;
 
     int ID1,ID2,oldW,newW;
@@ -2811,7 +3143,7 @@ void Gtree::GtreeUpdateParalel(int updateType, int updateVolume, int updateBatch
     bool flag_borderUpdate = false;//whether there is border update of leaf node
     Timer tt;
     ///preprocess: get the update edges
-    assert(updateVolume<=updateEdges.size());
+//    assert(updateVolume<=updateEdges.size());
     for(int batch_i=0;batch_i<updateBatch;++batch_i){
         cout<<"Batch "<<batch_i<<":";
         GTreeO = GTree; //old GTree
@@ -2823,15 +3155,15 @@ void Gtree::GtreeUpdateParalel(int updateType, int updateVolume, int updateBatch
         tt.start();
 //        cout<<"Before update: "<<Dijkstra(759,760,Nodes)<<endl;
         for(int i=batch_i;i<batch_i+updateVolume;++i){//for each edge update
-            ID1 = updateEdges[i].first.first;
-            ID2 = updateEdges[i].first.second;
+            ID1 = updates[i].first.first;
+            ID2 = updates[i].first.second;
 //            if(ID1 == 759 && ID2 == 760){
 //                cout<<"!!"<<endl;
 //                cout << ID1<<" "<<Nodes[ID1].adjnodes.size()<< " "<<Nodes[ID1].adjweight.size()<<endl;
 //                cout << ID2<<" "<<Nodes[ID2].adjnodes.size()<< " "<<Nodes[ID2].adjweight.size()<<endl;
 //            }
             cout<<" " <<ID1 << " "<<ID2;
-            oldW = updateEdges[i].second;
+            oldW = updates[i].second;
             switch (updateType) {
                 case INCREASE:
                     newW = (int)(2*oldW);//update
@@ -2959,9 +3291,6 @@ void Gtree::GtreeUpdateParalel(int updateType, int updateVolume, int updateBatch
         tt.stop();
         cout<<"The time used for updating: "<<tt.GetRuntime()<<" s."<<endl;
         ave_time += tt.GetRuntime();
-        if(ifDebug){
-            CorrectnessCheck(100);
-        }
 
     }
     cout<<"The average time used for updating: "<< ave_time/updateBatch <<" s."<<endl;
@@ -3692,8 +4021,8 @@ void Gtree::UpdatePropagateToUpperLevelsPruneP(vector<Node> & graph, unordered_s
         int threadnum=1;
         while (!nodesToCheck.empty()) {
             /// parallel computing by boost::thread_group
-            if(nodesToCheck.size()>THREAD_LIMIT){
-                threadnum = THREAD_LIMIT;
+            if(nodesToCheck.size()>thread_num){
+                threadnum = thread_num;
             }else{
                 threadnum = nodesToCheck.size();
             }
@@ -3893,14 +4222,66 @@ int Gtree::dijkstra_p2p(int s, int t) {//inline
     return -1;
 }
 
+//Dijkstra's algorithm from point to point
+int Gtree::dijkstra_p2p_leafNode(int s, int t) {//inline
+    int dis=INF;
+    int Ns = Nodes[s].inleaf;
+    int Nt = Nodes[t].inleaf;
+    if(Ns!=Nt){
+        cout<<"Wrong for same leaf node query! "<<s<<"("<<Ns<<") "<<t<<"("<<Nt<<")"<<endl; exit(1);
+    }
+    unordered_map<int, int> result;
+    result[s] = 0;
+
+    priority_queue<pair<int, int>, vector<pair<int, int>>, greater<pair<int, int>>> pq;
+    pq.emplace(0, s);
+
+    int min, minpos, adjnode, weight;
+    TIME_TICK_START
+
+    while (!pq.empty()) {
+        min = pq.top().first;
+        minpos = pq.top().second;
+
+        if (minpos == t) {
+            TIME_TICK_END
+            dis=min;
+//            return min;
+            break;
+        }
+
+        pq.pop();
+
+        for (int i = 0; i < Nodes[minpos].adjnodes.size(); i++) {
+
+            adjnode = Nodes[minpos].adjnodes[i];
+            weight = Nodes[minpos].adjweight[i];
+            if(Nodes[adjnode].inleaf!=Ns){
+                continue;
+            }
+            if (result.find(adjnode) == result.end() || result[adjnode] > min + weight) {
+                result[adjnode] = min + weight;
+                pq.emplace(min + weight, adjnode);
+            }
+        }
+    }
+
+    return dis;
+}
+
 int Gtree::Distance_query(int src, int dst) {
+    if(src==dst){
+        return 0;
+    }
+
     int Ns = Nodes[src].inleaf;
     int Nt = Nodes[dst].inleaf;
 
     // Case D1: vertices src and dst are in the same leaf node
     if (Ns == Nt) {
-//        cout<<src << " " << dst << " : s and t are in the same leaf node."<<endl;
-        return dijkstra_p2p(src, dst);
+        cout<<src << " " << dst << " : s and t are in the same leaf node."<<endl;
+//        return dijkstra_p2p(src, dst);
+        return dijkstra_p2p_leafNode(src, dst);
     }
 
     int posa = Nodes[src].inleafpos;//the position in leaf node
@@ -4028,37 +4409,7 @@ int Gtree::Distance_query(int src, int dst) {
     return min;
 }
 
-void Gtree::CorrectnessCheck(int times){
-    srand (time(NULL));
-    int s, t;
-    int dis_Dijk, dis_GTree;
-    Timer tt1,tt2;
-    double time_Dijk=0,time_PLL=0;
-    cout<<"Correctness check... Query number: "<<times<<endl;
 
-    for(int i=0;i<times;i++){//times
-        s=rand()%node_num;
-        t=rand()%node_num;
-//        s=759; t=760;
-        tt1.start();
-        dis_Dijk=Dijkstra(s,t,Nodes);
-        tt1.stop();
-        time_Dijk += tt1.GetRuntime();
-        init_query(GTree);
-        tt2.start();
-        dis_GTree=Distance_query(s,t);
-        tt2.stop();
-        time_PLL += tt2.GetRuntime();
-        if(dis_Dijk!=dis_GTree){
-            cout<<"InCorrect!! "<<s<<" "<<t<<" "<<dis_GTree<<" "<<dis_Dijk<<endl; exit(1);
-        }
-
-        //cout<<"PID "<<VtoParID[s]<<" "<<VtoParID[t]<<endl;
-    }
-//    cout << "Average run time of Dijkstra: "<<time_Dijk*1000/times<<" ms."<<endl;
-//    cout << "Average run time of Plannar_PLL: "<<time_PLL*1000/times<<" ms."<<endl;
-    //cout<<"Correctness finish!"<<endl;
-}
 
 
 #endif //GTREE_HPP

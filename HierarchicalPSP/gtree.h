@@ -36,19 +36,12 @@ using namespace std;
 #define INCREASE 2
 #define MIX 3
 
+#define gtreeIndex 1
+#define gstarIndex 2
+
 typedef int NodeId;
 typedef unsigned int Distance;//long long
 
-////string DataPath = "/Users/zhouxj/Documents/1-Research/1-Papers/0-My_Papers/2-EPSP/GTree-master/src/gtree/";
-//string DataPath = "/Users/zhouxj/Documents/1-Research/Datasets/";
-////string DataPath = "/media/TraminerData/s4451682/GraphDataforPartition/Processed/";
-//int task_type = 1; //1: G*-Tree build and query; 2: G*-Tree query; 3: generate OD pairs. default: 1
-//bool ifMac = true;
-////bool ifMac = false;
-//int percent = 10;//percentage of shortcuts (comparing to edge number), default 100
-//int top_level = 1;
-//bool ifDebug = false;//
-//string dirname;//intermediate file directory
 
 // MACRO for timing
 struct timeval tv;
@@ -66,8 +59,8 @@ long long ts, te;
 #define PARTITION_PART 4
 // gtree leaf node capacity = tau(in paper)
 //#define LEAF_CAP 64 // maximum vertex number in leaf node
-int LEAF_CAP = 32;
-#define THREAD_LIMIT 15//150
+//int LEAF_CAP = 32;
+//#define THREAD_LIMIT 15//150
 
 //const char *FILE_NODE = "cal.cnode";//const
 //const char *FILE_EDGE = "cal.cedge";
@@ -94,12 +87,12 @@ typedef struct{
 // struct for tree node
 typedef struct{
     vector<int> borders;    //border vertex
-    vector<int> children;   //id of child nodes
+    vector<int> children;   //id of child tree nodes
     bool isleaf;            //if leaf node
     vector<int> leafnodes;  //vertex in the leaf node
     int father;             //id of father node
 // ----- min dis -----
-    vector<int> union_borders; // for non leaf node, it contains all borders of children; for leaf node, it contains all vertices of this node
+    vector<int> union_borders; // for non leaf node, it contains all borders of children; for leaf node, it equals the borders of the leaf node
     vector<int> mind; // min dis, row by row of union_borders
 // ----- for pre query init, OCCURENCE LIST in paper -----
     vector<int> nonleafinvlist;
@@ -128,6 +121,8 @@ public:
     string dataset; //name of dataset
     unsigned int node_num = 0;      //the number of vertices
     unsigned int edge_num = 0;      //the number of edges
+    int LEAF_CAP = 32;  //leaf node size
+    int thread_num = 15;    //thread number
 //    int parti_num = 0;
     int noe = -1; // number of edges
     vector<Node> Nodes; // vector of vertex
@@ -145,19 +140,17 @@ public:
     string FILE_SHORTCUT = ".shortcuts";
     string FILE_QUERY = ".query";
     string FILE_UPDATE = ".update";
-    vector<pair<pair<int,int>,int>> updateEdges;
+//    vector<pair<pair<int,int>,int>> updateEdges;
 
-    //string DataPath = "/Users/zhouxj/Documents/1-Research/1-Papers/0-My_Papers/2-EPSP/GTree-master/src/gtree/";
     string DataPath = "/Users/zhouxj/Documents/1-Research/Datasets/";
-//string DataPath = "/media/TraminerData/s4451682/GraphDataforPartition/Processed/";
 //    int task_type = 1; //1: G*-Tree build and query; 2: G*-Tree query; 3: generate OD pairs. default: 1
     int indexType = 1;//1:G-tree; 2:G*-tree; 3:LG-tree
     bool ifParallel=true;
-    bool ifMac = true;
+//    bool ifMac = true;
 //bool ifMac = false;
     int percent = 10;//percentage of shortcuts (comparing to edge number), default 100
     int top_level = 1;
-    bool ifDebug = false;//
+//    bool ifDebug = false;//
     string dirname;//intermediate file directory
 
 //    // use for metis
@@ -174,7 +167,7 @@ public:
 //    idx_t options[METIS_NOPTIONS]; // option array
 
 
-    void PathInit(bool ifMac);
+    void PathInit();
     void options_setting();
     void load_graph();
     void ReadGraph_W();
@@ -199,7 +192,7 @@ public:
     void ODpairGenerate(int times);    //used to generate random OD pairs
     void UpdateGenerate(int times); //used to generate update pairs
     Distance Dijkstra(NodeId s, NodeId t, vector<Node> & Nodes);
-    void ReadUpdates(string filename);
+    void ReadUpdates(string filename, vector<pair<pair<int,int>,int>>& updateEdges);
     bool CheckIfAncestor(int ID2, int nid);
     void init_update();
     void init_borders();
@@ -213,6 +206,7 @@ public:
     void LeafLevelUpdate(vector<Node> & graph, unordered_set<int> & leafsToCheck, unordered_set<int> & updatedNodes, unordered_set<int> & borderAffectedNodes, bool ifParallel);//update of the leaf level nodes
     void NonLeafLevelUpdate(vector<Node> & graph, int level_i, vector< vector<int> > & treenodelevel, unordered_set<int> & nodesToCheck, unordered_set<int> & updatedNodes, unordered_set<int> & borderAffectedNodes, bool ifParallel);//update of non-leaf level nodes
     void UpdateUpwardsPropagate(vector<Node> & graph, unordered_set<int> & updatedNodes, unordered_set<int> & borderAffectedNodes, bool ifParallel, int lca, unordered_set<int> & nodesToCheck);//propagate the update from current level to the highest affected level
+    void GtreeIndexUpdate(vector<pair<pair<int,int>,pair<int,int> > > & updates, bool ifParallel);
     void GtreeUpdateParalel(int updateType,int updateVolume, int updateBatch, bool ifParallel);
     void UpdateDownwardsPropagate();//propagate the update from current level to the lowest affected level
     void LeafUpdate(int lnID, vector<Node> & graph, unordered_set<int> & leafsToCheck, unordered_set<int> & updatedLeafs,unordered_set<int> & borderAffectedNodes, unordered_map<int, bool> & flag_update);
@@ -224,8 +218,9 @@ public:
     void GetChildLeafs(int lca, unordered_set<int> & leafsToCheck, unordered_set<int> & updatedLeafs);
     int ComputeDisByTree(int src, int dst, vector<TreeNode> & GTree);
     int dijkstra_p2p(int s, int t);
+    int dijkstra_p2p_leafNode(int s, int t);
     int Distance_query(int src, int dst);
-    void CorrectnessCheck(int times);
+//    void CorrectnessCheck(int times);
 };
 
 //created by Mengxuan, modified by Xinjie

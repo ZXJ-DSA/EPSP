@@ -33,6 +33,7 @@ public:
 
     void IndexConstruction();
     void IndexMaintenance(int updateType, int updateBatch, int updateVolume);
+    void GstartreeIndexUpdate(vector<pair<pair<int,int>,pair<int,int> > > & updates, bool ifParallel);
     void GstartreeUpdateParalel(int updateType, int updateVolume, int updateBatch, bool ifParallel);
 
     void load_gtree();
@@ -57,6 +58,8 @@ public:
 //    inline int find_LCA_pos(int src, int dst);
     inline int dist_query(int src, int dst);
     void dist_main(int run_times); // query based on G*-Tree
+
+    void CorrectnessCheck(int times);
 };
 
 #endif //GSTARTREE_H
