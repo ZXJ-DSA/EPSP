@@ -13,7 +13,8 @@ int main(int argc, char** argv){
         printf("usage:\n<arg1> source path, e.g. ~/datasets\n");
         printf("<arg2> name of dataset, e.g. NY\n");
         printf("<arg3> leaf node size, e.g. 64\n");
-        printf("<arg4> index type, e.g. 1: G-Tree. default: 1\n");
+//        printf("<arg4> index type, e.g. 1: G-Tree; 2: G*-Tree; 3: LG-Tree; 4: N-TS-HP. default: 1\n");
+        printf("<arg4> index type, e.g. 1: G-Tree; 4: N-TS-HP. default: 4\n");
         printf("<arg5> task type, e.g. 1: Index construction and Querying; 2: Only Query processing; 3: Only Index update. default: 1\n");
         printf("<arg6> (optional) update type, e.g. 1: decrease update; 2: increase update. default: 1\n");
         printf("<arg7> (optional) update number. default: 1000\n");
@@ -92,19 +93,21 @@ int main(int argc, char** argv){
             // index construction
             gt.IndexConstruction();
 //            gt.build_up_and_down_pos();
-//            gt.CorrectnessCheck(100);
-//            // query processing
-//            gt.dist_main(runtimes);
+//            exit(0);
+            if(gt.indexType==tgtreeIndex){
+                gt.CorrectnessCheck(100);
+                gt.dist_main(runtimes);
+                gt.IndexMaintenance(updateType,updateBatch,updateVolume,false);
+            }
+
             break;
         case 2:
             /// querying
-            gt.init_gstarQ();
-            gt.CorrectnessCheck(100);
-            gt.dist_main(runtimes);
+            gt.QueryProcessingTest(runtimes);
             break;
         case 3:
             /// G-tree update
-            gt.IndexMaintenance(updateType,updateBatch,updateVolume);
+            gt.IndexMaintenance(updateType,updateBatch,updateVolume,true);
             /*if(updateType == INCREASE){
 		    updateType = DECREASE;
 		    cout<<"Update type: Decrease!"<<endl;
@@ -125,5 +128,5 @@ int main(int argc, char** argv){
     }
 
     tt.stop();
-    cout << "\nOverall time cost:" << tt.GetRuntime() << " seconds." << endl;
+    cout << "\nOverall time cost:" << tt.GetRuntime() << " seconds.\n" << endl;
 }

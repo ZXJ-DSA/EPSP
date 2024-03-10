@@ -31,13 +31,15 @@
 #include <boost/thread/thread.hpp>
 
 using namespace std;
-#define INF INT32_MAX
+#define INF 99999999
 #define DECREASE 1
 #define INCREASE 2
 #define MIX 3
 
 #define gtreeIndex 1
 #define gstarIndex 2
+#define lgtreeIndex 3
+#define tgtreeIndex 4
 
 typedef int NodeId;
 typedef unsigned int Distance;//long long
@@ -144,7 +146,7 @@ public:
 
     string DataPath = "/Users/zhouxj/Documents/1-Research/Datasets/";
 //    int task_type = 1; //1: G*-Tree build and query; 2: G*-Tree query; 3: generate OD pairs. default: 1
-    int indexType = 1;//1:G-tree; 2:G*-tree; 3:LG-tree
+    int indexType = 4;//1:G-tree; 2:G*-tree; 3:LG-tree; 4: TG-tree
     bool ifParallel=true;
 //    bool ifMac = true;
 //bool ifMac = false;
@@ -176,9 +178,9 @@ public:
     void finalize();
     unordered_map<int,int> graph_partition( set<int> &nset );
     void build();
-    void gtree_save();
+    void gtree_save(string filename, string filename2);
     void gtree_save_txt();
-    void load_gtreeQ();
+    void load_gtree(string filename, string filename2);
     void build_up_and_down_pos();
     vector<int> dijkstra_candidate( int s, vector<int> &cands, vector<Node> &graph );
 
@@ -186,8 +188,8 @@ public:
     void hierarchy_shortest_path_calculation(bool ifParallel);
     void hierarchy_shortest_path_compute_update(int i, vector<int> tn_v, vector<Node> & graph, vector<vector<unordered_map<int, unordered_map<int,int> >>> & vertex_pairsVV, int thread_i);
     void hierarchy_shortest_path_calculate(bool ifParallel);
-    void hierarchy_shortest_path_save();
-    void load_minds();
+    void hierarchy_shortest_path_save(string filename);
+    void load_minds(string filename);
     int gtree_build(bool ifParallel); // build G-Tree
     void ODpairGenerate(int times);    //used to generate random OD pairs
     void UpdateGenerate(int times); //used to generate update pairs

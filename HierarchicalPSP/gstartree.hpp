@@ -8,21 +8,283 @@
 #include "gstartree.h"
 
 void Gstartree::IndexConstruction(){
-    if(indexType==gtreeIndex){//G-tree
-        /// G-tree building
-        gtree_build(ifParallel);
-    }else if(indexType==gstarIndex){//G*-tree
-        gstartree_build();
+    switch (indexType) {
+        case gtreeIndex:{//G-tree
+            cout<<"Index type: G-Tree."<<endl;
+            gtree_build(ifParallel);
+            break;
+        }
+        case gstarIndex:{//G*-tree
+            cout<<"Index type: G*-Tree."<<endl;
+            gstartree_build();
+            break;
+        }
+        case lgtreeIndex:{//LG-tree
+            cout<<"Index type: LG-Tree."<<endl;
+            break;
+        }
+        case tgtreeIndex:{
+            cout<<"Index type: TG-Tree."<<endl;
+            TDGTreeIndexBuild();
+            break;
+        }
+        default:{
+            cout<<"Wrong index type! "<<indexType<<endl; exit(1);
+        }
     }
-//    else if(indexType==3){//LG-tree
-//
-//    }
+
 }
 
-void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolume){
+void Gstartree::TDGTreeIndexBuild(){
     // init
-    init_update();
+    init();
+    double t1=0,t2=0,t3=0,t4=0;
+
+    /// Hierarchical tree building
+    Timer tt;
+    cout << "Start to build G-tree..."<<endl;
+    tt.start();
+    build();
+//    cout <<"Done."<<endl;
+    tt.stop();
+    t1 = tt.GetRuntime();
+    cout << "The time for G-tree building: " << t1 << " s." << endl;
+
+    // dump gtree
+//    cout << "Saving G-tree..."<<endl;
+    gtree_save(dirname+"/"+dataset + "." + to_string(LEAF_CAP) + ".TD.gtree.bin", dirname+"/"+dataset + "." + to_string(LEAF_CAP) + ".TD.paths.bin");
+//    gtree_save_txt();
+//    cout <<"Done."<<endl;
+//    exit(0);
+
+    /// original overlay graph building
+    tt.start();
+    getOriginalOverlayGraph();
+//    getOverlayOrder();//top-down hierarchical ordering
+    tt.stop();
+    t2 = tt.GetRuntime();
+    cout << "The time for overlay graph computing: " << t2 << " s." << endl;
+    // calculate distance matrix
+    cout << "Start to constructing index..."<<endl;
+    tt.start();
+    hierarchy_shortest_path_calculation_NoBoundary(ifParallel);
+//    hierarchy_shortest_path_calculation_NoBoundary(false);
+//    cout << "Done."<<endl;
+    tt.stop();
+    t3 = tt.GetRuntime();
+    cout << "The time for partition index building: " << t3 << " s." << endl;
+    hierarchy_shortest_path_save(dirname+"/"+dataset + "." + to_string(LEAF_CAP) + ".TD.minds.bin");
+    /// Construct L~
+    tt.start();
+    H2HconOrderMT();///
+    tt.stop();
+    t4=tt.GetRuntime();
+    graphInfoSave(dirname+"/"+dataset + "." + to_string(LEAF_CAP) + ".TD.graph.bin");
+    cout << "The time for overlay index building: " << t4 << " s." << endl;
+    cout << "Overall time for index construction: " << t1+t2+t3+t4 << " s." << endl;
+    // dump distance matrix
+//    cout << "Saving distance matrix..."<<endl;
+//    H2HIndexSave();
+//    cout << "Done."<<endl;
+    IndexSize();
+}
+
+//void Gstartree::leafNodeMatrix_save(){
+//    char filename[300];
+//    if(dataset == "cal"){
+//        strcpy(filename, DataPath.c_str());
+//        strcat(filename, FILE_ONTREE_MIND.c_str());
+//    }else {
+//        strcpy(filename, dirname.c_str());
+//        strcat(filename, "/");
+//        string temp=dataset + "." + to_string(LEAF_CAP) + ".TD.minds.bin";
+//        strcat(filename, temp.c_str());
+//    }
+//    FILE* fout = fopen( filename, "wb" );
+//    if(fout == NULL){
+//        cout<<"Failed to open file "<<filename<<endl;
+//        exit(1);
+//    }
+//    int* buf;
+//    int count;
+//    for ( int i = 0; i < GTree.size(); i++ ){
+//        // union borders
+//        count = GTree[i].union_borders.size();
+//        fwrite( &count, sizeof(int), 1, fout );
+//        buf = new int[count];
+//        copy( GTree[i].union_borders.begin(), GTree[i].union_borders.end(), buf );
+//        fwrite( buf, sizeof(int), count, fout );
+//        delete[] buf;
+//        // mind
+//        count = GTree[i].mind.size();
+//        fwrite( &count, sizeof(int), 1, fout );
+//        buf = new int[count];
+//        copy( GTree[i].mind.begin(), GTree[i].mind.end(), buf );
+//        fwrite( buf, sizeof(int), count, fout );
+//        delete[] buf;
+//    }
+//    fclose(fout);
+//}
+
+void Gstartree::H2HIndexSave(){
+    char filename[300];
+
+    strcpy(filename, dirname.c_str());
+    strcat(filename, "/");
+    string temp=dataset + "." + to_string(LEAF_CAP) + ".TD.H2H.bin";
+    strcat(filename, temp.c_str());
+
+    FILE* fout = fopen( filename, "wb" );
+    if(fout == NULL){
+        cout<<"Failed to open file "<<filename<<endl;
+        exit(1);
+    }
+    int* buf;
+    int count;
+    /// Tree
+    fwrite( &heightMax, sizeof(int), 1, fout );
+    count = Tree.size();
+    fwrite( &count, sizeof(int), 1, fout );
+    for ( int i = 0; i < Tree.size(); i++ ){
+        // uniqueVertex, pa, height, hdepth
+        fwrite( &Tree[i].uniqueVertex, sizeof(int), 1, fout );
+        fwrite( &Tree[i].pa, sizeof(int), 1, fout );
+        fwrite( &Tree[i].height, sizeof(int), 1, fout );
+        fwrite( &Tree[i].hdepth, sizeof(int), 1, fout );
+        // vert
+        count = Tree[i].vert.size();
+        fwrite( &count, sizeof(int), 1, fout );
+        for(int j=0;j<count;++j){
+            fwrite( &Tree[i].vert[j].first, sizeof(int), 1, fout );
+            fwrite( &Tree[i].vert[j].second.first, sizeof(int), 1, fout );
+            fwrite( &Tree[i].vert[j].second.second, sizeof(int), 1, fout );
+        }
+        // dis
+        count = Tree[i].dis.size();
+        fwrite( &count, sizeof(int), 1, fout );
+        buf = new int[count];
+        copy( Tree[i].dis.begin(), Tree[i].dis.end(), buf );
+        fwrite( buf, sizeof(int), count, fout );
+        delete[] buf;
+        // cnt
+        count = Tree[i].cnt.size();
+        fwrite( &count, sizeof(int), 1, fout );
+        buf = new int[count];
+        copy( Tree[i].cnt.begin(), Tree[i].cnt.end(), buf );
+        fwrite( buf, sizeof(int), count, fout );
+        delete[] buf;
+        // pos
+        count = Tree[i].pos.size();
+        fwrite( &count, sizeof(int), 1, fout );
+        buf = new int[count];
+        copy( Tree[i].pos.begin(), Tree[i].pos.end(), buf );
+        fwrite( buf, sizeof(int), count, fout );
+        delete[] buf;
+        // vAncestor
+        count = Tree[i].vAncestor.size();
+        fwrite( &count, sizeof(int), 1, fout );
+        buf = new int[count];
+        copy( Tree[i].vAncestor.begin(), Tree[i].vAncestor.end(), buf );
+        fwrite( buf, sizeof(int), count, fout );
+        delete[] buf;
+        // ch
+        count = Tree[i].ch.size();
+        fwrite( &count, sizeof(int), 1, fout );
+        buf = new int[count];
+        copy( Tree[i].ch.begin(), Tree[i].ch.end(), buf );
+        fwrite( buf, sizeof(int), count, fout );
+        delete[] buf;
+        // FN
+        count = Tree[i].FN.size();
+        fwrite( &count, sizeof(int), 1, fout );
+        bool *buf2 = new bool[count];
+        copy( Tree[i].FN.begin(), Tree[i].FN.end(), buf2 );
+        fwrite( buf2, sizeof(int), count, fout );
+        delete[] buf2;
+    }
+    /// rank
+    count = rank.size();
+    fwrite( &count, sizeof(int), 1, fout );
+    buf = new int[count];
+    copy( rank.begin(), rank.end(), buf );
+    fwrite( buf, sizeof(int), count, fout );
+    delete[] buf;
+    /// SCconNodesMT
+    count = SCconNodesMT.size();
+    fwrite( &count, sizeof(int), 1, fout );
+    for ( int i = 0; i < SCconNodesMT.size(); i++ ){
+        // vert
+        count = SCconNodesMT[i].size();
+        fwrite( &count, sizeof(int), 1, fout );
+        for(auto it=SCconNodesMT[i].begin();it!=SCconNodesMT[i].end();++it){
+            fwrite( &it->first, sizeof(int), 1, fout );
+            count = it->second.size();
+            fwrite( &count, sizeof(int), 1, fout );
+            buf = new int[count];
+            copy( it->second.begin(), it->second.end(), buf );
+            fwrite( buf, sizeof(int), count, fout );
+            delete[] buf;
+        }
+    }
+    /// VidtoTNid
+    count = VidtoTNid.size();
+    fwrite( &count, sizeof(int), 1, fout );
+    for ( int i = 0; i < VidtoTNid.size(); i++ ){
+        // vert
+        count = VidtoTNid[i].size();
+        fwrite( &count, sizeof(int), 1, fout );
+        buf = new int[count];
+        copy( VidtoTNid[i].begin(), VidtoTNid[i].end(), buf );
+        fwrite( buf, sizeof(int), count, fout );
+        delete[] buf;
+    }
+
+    fclose(fout);
+}
+
+void Gstartree::graphInfoSave(string filename){
+//    char filename[300];
+//    strcpy(filename, dirname.c_str());
+//    strcat(filename, "/");
+//    string temp=dataset + "." + to_string(LEAF_CAP) + ".TD.graph.bin";
+//    strcat(filename, temp.c_str());
+
+    FILE* fout = fopen( filename.c_str(), "wb" );
+    if(fout == NULL){
+        cout<<"Failed to open file "<<filename<<endl;
+        exit(1);
+    }
+    int* buf;
+    int count;
+    /// Overlay graph
+    for(int i=0;i<OverlayGraph.size();++i){
+        count = OverlayGraph[i].size();
+        fwrite( &count, sizeof(int), 1, fout );
+        for(auto it=OverlayGraph[i].begin();it!=OverlayGraph[i].end();++it){
+            fwrite( &it->first, sizeof(int), 1, fout );
+            fwrite( &it->second, sizeof(int), 1, fout );
+        }
+    }
+    /// Ordering
+    count=node_num;
+    buf = new int[count];
+    copy( NodeOrder.begin(), NodeOrder.end(), buf );
+    fwrite( buf, sizeof(int), count, fout );
+    delete[] buf;
+    fclose(fout);
+}
+
+void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolume, bool ifRead){
+    // init
+    if(ifRead){
+        if(indexType==gtreeIndex || indexType==gstarIndex){
+            init_update();
+        }
+        else if(indexType==tgtreeIndex){
+            init_TGTreeIndex();
+        }
 //    CorrectnessCheck(100);
+    }
 
     // read updates
     string file = string(DataPath) + "/" + dataset + "/" + FILE_UPDATE;
@@ -35,6 +297,10 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
 
     cout<<"Update batch: "<<updateBatch<<endl;
     cout<<"Update volume of each batch: "<<updateVolume<<endl;
+
+    if(indexType==tgtreeIndex){
+        NodeOrder_=NodeOrder;
+    }
 
     bool ifDebug= false;
 //    ifDebug=true;
@@ -50,9 +316,9 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
         case DECREASE:{
             cout<<"\nUpdate type: Decrease"<<endl;
             ave_time = 0;
-            auto GTreeTemp=GTree; auto NodesTemp=Nodes;
+            auto GTreeTemp=GTree; auto NodesTemp=Nodes; auto TreeTemp=Tree; auto SCconNodesMTTemp=SCconNodesMT;
             for(int batch_i=0;batch_i<updateBatch;++batch_i){
-                cout<<"Batch "<<batch_i;
+                cout<<"Batch "<<batch_i<<" :";
                 updates.clear();
                 for(int i=batch_i;i<batch_i+updateVolume;++i) {//for each edge update
                     ID1 = updateEdges[i].first.first;
@@ -60,33 +326,43 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
                     oldW = updateEdges[i].second;
                     newW = (int) (0.5 * oldW);
                     updates.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+                    if(ifDebug){
+                        cout<<" "<<ID1<<"("<<Nodes[ID1].isborder<<","<<Nodes[ID1].inleaf<<") "<<ID2<<"("<<Nodes[ID2].isborder<<","<<Nodes[ID2].inleaf<<") "<<oldW<<" "<<newW;
+                    }
                 }
-                GTreeO = GTree; //old GTree
-                NodesO = Nodes;//old Nodes
-                tt.start();
+
                 if(indexType==gtreeIndex){
+                    GTreeO = GTree; //old GTree
+                    NodesO = Nodes;//old Nodes
+                    tt.start();
                     GtreeIndexUpdate(updates,ifParallel);
+                    tt.stop();
                 }else if(indexType==gstarIndex){
+                    tt.start();
                     GstartreeUpdateParalel(updateType,updateVolume,updateBatch,ifParallel);
+                    tt.stop();
+                }else if(indexType==tgtreeIndex){
+                    tt.start();
+                    TGTreeIndexUpdate(updates,ifParallel,DECREASE);
+                    tt.stop();
                 }
-                tt.stop();
+
                 cout<<" ; update time: "<<tt.GetRuntime()<<" s."<<endl;
                 ave_time += tt.GetRuntime();
                 if(ifDebug){
-
                     CorrectnessCheck(100);
                 }
             }
             cout<<"The average time used for updating: "<< ave_time/updateBatch <<" s."<<endl;
 //            break;
-            GTree=GTreeTemp; Nodes=NodesTemp;
+            GTree=GTreeTemp; Nodes=NodesTemp; Tree=TreeTemp; SCconNodesMT=SCconNodesMTTemp;
         }
         case INCREASE:{
             cout<<"\nUpdate type: Increase"<<endl;
             ave_time = 0;
+//            for(int batch_i=2;batch_i<updateBatch;++batch_i){
             for(int batch_i=0;batch_i<updateBatch;++batch_i){
-                cout<<"Batch "<<batch_i;
-
+                cout<<"Batch "<<batch_i<<" :";
                 updates.clear();
                 for(int i=batch_i;i<batch_i+updateVolume;++i) {//for each edge update
                     ID1 = updateEdges[i].first.first;
@@ -94,17 +370,35 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
                     oldW = updateEdges[i].second;
                     newW = (int) (1.5 * oldW);//update
                     updates.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+                    if(ifDebug){
+                        cout<<" "<<ID1<<"("<<Nodes[ID1].isborder<<","<<Nodes[ID1].inleaf<<") "<<ID2<<"("<<Nodes[ID2].isborder<<","<<Nodes[ID2].inleaf<<") "<<oldW<<" "<<newW;
+                    }
                 }
-                GTreeO = GTree; //old GTree
-                NodesO = Nodes;//old Nodes
-                tt.start();
+                if(ifDebug){
+                    cout<<endl;
+                }
+//                cout<<"Before update: "<<endl;
+//                int s=138682, t=146478;
+//                int dis1=Query_TGTree(s,t);
+//                cout<<s<<"("<<Nodes[s].isborder<<","<<Nodes[s].inleaf<<") "<<t<<"("<<Nodes[t].isborder<<","<<Nodes[t].inleaf<<") "<<dis1<<" "<<Dijkstra(s,t,Nodes)<<endl;
+
                 if(indexType==gtreeIndex){
+                    GTreeO = GTree; //old GTree
+                    NodesO = Nodes;//old Nodes
+                    tt.start();
                     GtreeIndexUpdate(updates,ifParallel);
+                    tt.stop();
                 }else if(indexType==gstarIndex){
+                    tt.start();
                     GstartreeUpdateParalel(updateType,updateVolume,updateBatch,ifParallel);
+                    tt.stop();
+                }else if(indexType==tgtreeIndex){
+                    tt.start();
+                    TGTreeIndexUpdate(updates,ifParallel,INCREASE);
+                    tt.stop();
                 }
-                tt.stop();
-                cout<<" ; update time: "<<tt.GetRuntime()<<" s."<<endl;
+
+                cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
                 ave_time += tt.GetRuntime();
                 if(ifDebug){
                     CorrectnessCheck(100);
@@ -150,9 +444,6 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
             cout<<"Wrong update type! "<<updateType<<endl; exit(1);
         }
     }
-
-
-
 }
 
 //function of dealing with batch edge increase update of G-tree
@@ -489,9 +780,9 @@ void Gstartree::GstartreeUpdateParalel(int updateType, int updateVolume, int upd
 }
 
 // load gtree index from file
-void Gstartree::load_gtree() {
+/*void Gstartree::load_gtree() {
     // FILE_GTREE
-    char filename[200];
+    char filename[300];
     if(dataset == "cal"){
         strcpy(filename, DataPath.c_str());
         strcat(filename, FILE_GTREE.c_str());
@@ -599,12 +890,64 @@ void Gstartree::load_gtree() {
     }
     fclose(fin);
     delete[] buf;
+}*/
+
+// load distance matrix from file
+void Gstartree::load_graphOrdering(string filename){
+//    char filename[300];
+//    if(dataset == "cal"){
+//        strcpy(filename, DataPath.c_str());
+//        strcat(filename, FILE_ONTREE_MIND.c_str());
+//    }else {
+//        strcpy(filename, dirname.c_str());
+//        strcat(filename, "/");
+//        strcat(filename, FILE_ONTREE_MIND.c_str());
+//    }
+    FILE* fin = fopen( filename.c_str(), "rb" );
+    if(fin == NULL){
+        cout << "Failed to open file " << filename << endl;
+        exit(1);
+    }
+    cout << "Loading overlay graph information... ";
+    int* buf;
+    int count, pos = 0;
+    int ID1, ID2, weight;
+    /// Overlay graph
+    overlayNodeNum=0;
+    OverlayGraph.assign(node_num,unordered_map<int,int>());
+    for(ID1=0;ID1<OverlayGraph.size();++ID1){
+        fread( &count, sizeof(int), 1, fin );
+        if(count>=1){
+            overlayNodeNum++;
+            for(int j=0;j<count;++j){
+                fread( &ID2, sizeof(int), 1, fin );
+                fread( &weight, sizeof(int), 1, fin );
+                OverlayGraph[ID1].insert({ID2,weight});
+            }
+        }
+
+    }
+    /// Ordering
+    buf = new int[node_num];
+    NodeOrder.clear();
+    fread( buf, sizeof(int), node_num, fin );
+    for ( int i = 0; i < node_num; i++ ){
+        NodeOrder.push_back(buf[i]);
+    }
+    delete[] buf;
+    fclose(fin);
+    vNodeOrder.assign(node_num,-1);
+    for(int i=0;i<node_num;++i){
+        vNodeOrder[NodeOrder[i]]=i;
+    }
+    cout<<"Done."<<endl;
+    cout<<"Overlay graph size: "<<overlayNodeNum<<endl;
 }
 
 // load gtree index from file
 /*void Gstartree::load_gtreeQ() {
     // FILE_GTREE
-    char filename[200];
+    char filename[300];
     if(dataset == "cal"){
         strcpy(filename, DataPath.c_str());
         strcat(filename, FILE_GTREE.c_str());
@@ -708,7 +1051,7 @@ void Gstartree::load_shortcuts() {
         eta = (unsigned long)edge_num*percent/100;
     }
 
-    char filename[200];
+    char filename[300];
     if(dataset == "cal"){
         strcpy(filename, DataPath.c_str());
         strcat(filename, FILE_SHORTCUT.c_str());
@@ -1190,7 +1533,7 @@ void Gstartree::save_shortcuts(string FS) {
 }
 
 int Gstartree::gstartree_build() {
-    char filename[200];
+    char filename[300];
     if(dataset == "cal"){
         strcpy(filename, DataPath.c_str());
         strcat(filename, FILE_GTREE.c_str());
@@ -1211,8 +1554,8 @@ int Gstartree::gstartree_build() {
             ReadGraph_W();
         }
         /// data loading
-        load_gtree();
-        load_minds();
+        load_gtree(dirname+"/"+FILE_GTREE, dirname+"/"+FILE_NODES_GTREE_PATH);
+        load_minds(dirname+"/"+FILE_ONTREE_MIND);
     }
 
 
@@ -1240,7 +1583,7 @@ int Gstartree::gstartree_build() {
         tt.stop();
         cout << "The time for G*-tree building: " << tt.GetRuntime() << " seconds." << endl;
 
-        char filename[200];
+        char filename[300];
         if(dataset == "cal"){
             strcpy(filename, DataPath.c_str());
             strcat(filename, FILE_SHORTCUT.c_str());
@@ -1272,13 +1615,37 @@ void Gstartree::init_gstarQ() {
         ReadGraph_W();
     }
 
-    load_gtreeQ();
-    load_minds();
+    load_gtree(dirname+"/"+FILE_GTREE, dirname+"/"+FILE_NODES_GTREE_PATH);
+    load_minds(dirname+"/"+FILE_ONTREE_MIND);
     if(indexType==gstarIndex){
         shortcuts.clear();
         load_shortcuts();
     }
     build_up_and_down_pos();//
+}
+
+void Gstartree::init_TGTreeIndex() {
+    if(dataset == "cal"){
+        load_graph();
+    }else{
+        ReadGraph_W();
+    }
+
+    load_gtree(dirname+"/"+dataset + "." + to_string(LEAF_CAP) + ".TD.gtree.bin", dirname+"/"+dataset + "." + to_string(LEAF_CAP) + ".TD.paths.bin");
+    load_minds(dirname+"/"+dataset + "." + to_string(LEAF_CAP) + ".TD.minds.bin");
+    load_graphOrdering(dirname+"/"+dataset + "." + to_string(LEAF_CAP) + ".TD.graph.bin");
+
+    /// Construct L~
+    Timer tt;
+    tt.start();
+    H2HconOrderMT();///
+    tt.stop();
+    cout << "The time for overlay index building: " << tt.GetRuntime() << " s." << endl;
+    // dump distance matrix
+//    cout << "Saving distance matrix..."<<endl;
+//    H2HIndexSave();
+//    cout << "Done."<<endl;
+    IndexSize();
 }
 
 //void Gstartree::init_query() {
@@ -1292,7 +1659,7 @@ void Gstartree::init_gstarQ() {
 vector<int> Gstartree::load_objects() {
     unordered_set<int> o;
     o.clear();
-    char filename[200];
+    char filename[300];
     if(dataset == "cal"){
         strcpy(filename, DataPath.c_str());
         strcat(filename, FILE_OBJECT.c_str());
@@ -1449,27 +1816,326 @@ inline bool Gstartree::check_shortcut(int ns, int nt) {
 //    return 0;
 //}
 
+void Gstartree::QueryProcessingTest(int runtimes) {
+    switch (indexType) {
+        case gtreeIndex:{
+            init_gstarQ();
+            CorrectnessCheck(100);
+            dist_main(runtimes);
+            break;
+        }
+        case gstarIndex:{
+            init_gstarQ();
+            CorrectnessCheck(100);
+            dist_main(runtimes);
+            break;
+        }
+        case tgtreeIndex:{
+            init_TGTreeIndex();
+            CorrectnessCheck(100);
+            dist_main(runtimes);
+            break;
+        }
+        default:{
+            cout<<"Wrong index type! "<<indexType<<endl; exit(1);
+        }
+    }
+}
+
+//stage-based query for No-Boundary
+int Gstartree::Query_TGTree(int ID1, int ID2) {
+    int d=INF;
+    int Ns = Nodes[ID1].inleaf;
+    int Nt = Nodes[ID2].inleaf;
+    if(Nodes[ID1].isborder && Nodes[ID2].isborder){//if ID1 and ID2 are boundary vertices
+        d = QueryH2H(ID1,ID2);
+    }else if(Nodes[ID1].isborder && !Nodes[ID2].isborder ){//if only ID1 is boundary vertex
+        d = QueryPartiBoundary(ID2,ID1);
+    }else if(Nodes[ID2].isborder && !Nodes[ID1].isborder){
+        d = QueryPartiBoundary(ID1,ID2);
+    }else if(!Nodes[ID1].isborder && !Nodes[ID2].isborder){//if both are not boundary vertex
+        if(Ns == Nt){//in the same partition
+            cout<<"same-partition query! "<<ID1<<"("<<Ns<<") "<<ID2<<"("<<Nt<<")"<<endl;
+//            d = Dijkstra(ID1,ID2,Nodes);
+            d=dijkstra_p2p_leafNode(ID1, ID2);
+            int dis1,dis2;
+            int bid1,bid2;
+            int borderSize=GTree[Ns].borders.size();
+            int posa = Nodes[ID1].inleafpos;//the position in leaf node
+            int posb = Nodes[ID2].inleafpos;//the position in leaf node
+            for(int i=0;i<GTree[Ns].borders.size();++i){
+                bid1=GTree[Ns].borders[i];
+                dis1=GTree[Ns].mind[i*borderSize+posa];
+                for(int j=0;j<GTree[Ns].borders.size();++j){
+                    bid2=GTree[Ns].borders[j];
+                    dis2=GTree[Ns].mind[j*borderSize+posb];
+                    if(d>dis1+dis2){
+                        d=dis1+dis2;
+                    }
+                }
+            }
+        }else{//if in different partitions
+            d = QueryPartiParti(ID1,ID2);
+        }
+    }
+    return d;
+}
+
+int Gstartree::Query_TGTreeDebug(int ID1, int ID2) {
+    int d=INF;
+    int Ns = Nodes[ID1].inleaf;
+    int Nt = Nodes[ID2].inleaf;
+    if(Nodes[ID1].isborder && Nodes[ID2].isborder){//if ID1 and ID2 are boundary vertices
+        cout<<"boundary-boundary."<<endl;
+        d = QueryH2HDebug(ID1,ID2);
+    }else if(Nodes[ID1].isborder && !Nodes[ID2].isborder ){//if only ID1 is boundary vertex
+        cout<<"boundary-parti."<<endl;
+        d = QueryPartiBoundaryDebug(ID2,ID1);
+    }else if(Nodes[ID2].isborder && !Nodes[ID1].isborder){
+        cout<<"parti-boundary."<<endl;
+        d = QueryPartiBoundaryDebug(ID1,ID2);
+    }else if(!Nodes[ID1].isborder && !Nodes[ID2].isborder){//if both are not boundary vertex
+        if(Ns == Nt){//in the same partition
+            cout<<"same-partition query! "<<ID1<<"("<<Ns<<") "<<ID2<<"("<<Nt<<")"<<endl;
+//            d = Dijkstra(ID1,ID2,Nodes);
+            d=dijkstra_p2p_leafNode(ID1, ID2);
+            int dis1,dis2;
+            int bid1,bid2;
+            int borderSize=GTree[Ns].borders.size();
+            int posa = Nodes[ID1].inleafpos;//the position in leaf node
+            int posb = Nodes[ID2].inleafpos;//the position in leaf node
+            for(int i=0;i<GTree[Ns].borders.size();++i){
+                bid1=GTree[Ns].borders[i];
+                dis1=GTree[Ns].mind[i*borderSize+posa];
+                for(int j=0;j<GTree[Ns].borders.size();++j){
+                    bid2=GTree[Ns].borders[j];
+                    dis2=GTree[Ns].mind[j*borderSize+posb];
+                    if(d>dis1+dis2){
+                        d=dis1+dis2;
+                    }
+                }
+            }
+        }else{//if in different partitions
+            cout<<"cross-parti."<<endl;
+            d = QueryPartiParti(ID1,ID2);
+        }
+    }
+    return d;
+}
+
+int Gstartree::QueryH2H(int ID1,int ID2){
+    if(ID1==ID2) return 0;
+    if(NodeOrder[ID1]==-1 || NodeOrder[ID2]==-1)
+        return INF;
+    int r1=rank[ID1], r2=rank[ID2];
+    int LCA=LCAQuery(r1,r2);
+
+    if(LCA==r1)
+        return Tree[r2].dis[Tree[r1].pos.back()];
+    else if(LCA==r2)
+        return Tree[r1].dis[Tree[r2].pos.back()];
+    else{
+        int tmp=INF;
+        for(int i=0;i<Tree[LCA].pos.size();i++){
+            if(tmp>Tree[r1].dis[Tree[LCA].pos[i]]+Tree[r2].dis[Tree[LCA].pos[i]])
+                tmp=Tree[r1].dis[Tree[LCA].pos[i]]+Tree[r2].dis[Tree[LCA].pos[i]];
+        }
+        return tmp;
+    }
+}
+
+int Gstartree::QueryH2HDebug(int ID1,int ID2){
+    if(ID1==ID2) return 0;
+    if(NodeOrder[ID1]==-1 || NodeOrder[ID2]==-1)
+        return INF;
+    int r1=rank[ID1], r2=rank[ID2];
+    int LCA=LCAQuery(r1,r2);
+    int hub,dis1,dis2,dis1F,dis2F;
+    int dis=INF;
+
+    if(LCA==r1){
+        cout<<"LCA=r1 "<<Tree[LCA].uniqueVertex<<endl;
+        return Tree[r2].dis[Tree[r1].pos.back()];
+    }
+    else if(LCA==r2){
+        cout<<"LCA=r2 "<<Tree[LCA].uniqueVertex<<endl;
+        return Tree[r1].dis[Tree[r2].pos.back()];
+    }
+    else{
+        cout<<"LCA= "<<Tree[LCA].uniqueVertex<<endl;
+        for(int i=0;i<Tree[LCA].pos.size();i++){
+            dis1=Tree[r1].dis[Tree[LCA].pos[i]]; dis2=Tree[r2].dis[Tree[LCA].pos[i]];
+            if(dis>dis1+dis2){
+                dis1F=dis1, dis2F=dis2; hub=Tree[LCA].vert[i].first;
+                dis=dis1+dis2;
+            }
+        }
+
+    }
+
+    int dis1_Dijk= Dijkstra(ID1,hub,Nodes), dis2_Dijk= Dijkstra(hub,ID2,Nodes);
+    cout<<ID1<<"("<<Nodes[ID1].isborder<<","<<Nodes[ID1].inleaf<<") "<<hub<<"("<<Nodes[hub].isborder<<","<<Nodes[hub].inleaf<<") "<<ID2<<"("<<Nodes[ID2].isborder<<","<<Nodes[ID2].inleaf<<"): "<<dis1F<<"("<<dis1_Dijk<<") "<<dis2F<<"("<<dis2_Dijk<<") "<<dis<<"("<<Dijkstra(ID1,ID2,Nodes)<<")"<<endl;
+    return dis;
+}
+
+int Gstartree::QueryPartiBoundary(int ID1,int ID2){
+    int d=INF;
+    assert(Nodes[ID1].isborder==false && Nodes[ID2].isborder==true);
+    int PID1=Nodes[ID1].inleaf;
+    int PosID1=Nodes[ID1].inleafpos;
+    vector<int> B1;
+    int bID1,d1;
+    int tempdis;
+    B1 = GTree[PID1].borders;
+
+    map<int,int> m1  ;
+    m1.clear();
+
+    int lnNum1 = GTree[PID1].leafnodes.size();
+
+    //get distances to corresponding boundary vertex
+    for(int i=0;i<B1.size();++i){
+        bID1 = B1[i];
+        d1 = GTree[PID1].mind[i*lnNum1 + PosID1];
+        m1.insert({bID1,d1});
+    }
+
+    int b1f,b2f,d1f,d2f,dbb,dbbf;
+    //get distances between boundary vertex
+    for(int i=0;i<B1.size();++i){
+        bID1 = B1[i];
+
+        dbb = QueryH2H(bID1,ID2);
+        tempdis = m1[bID1] + dbb;
+        if(tempdis < d){
+            d = tempdis;
+            b1f = bID1;
+            d1f = m1[bID1];
+            dbbf = dbb;
+        }
+
+    }
+    return d;
+}
+
+int Gstartree::QueryPartiBoundaryDebug(int ID1,int ID2){
+    int d=INF;
+    assert(Nodes[ID1].isborder==false && Nodes[ID2].isborder==true);
+    int PID1=Nodes[ID1].inleaf;
+    int PosID1=Nodes[ID1].inleafpos;
+    vector<int> B1;
+    int bID1,d1;
+    int tempdis;
+    B1 = GTree[PID1].borders;
+
+    map<int,int> m1  ;
+    m1.clear();
+
+    int lnNum1 = GTree[PID1].leafnodes.size();
+
+    //get distances to corresponding boundary vertex
+    for(int i=0;i<B1.size();++i){
+        bID1 = B1[i];
+        d1 = GTree[PID1].mind[i*lnNum1 + PosID1];
+        m1.insert({bID1,d1});
+    }
+
+    int b1f,b2f,d1f,d2f,dbb,dbbf;
+    //get distances between boundary vertex
+    for(int i=0;i<B1.size();++i){
+        bID1 = B1[i];
+
+        dbb = QueryH2H(bID1,ID2);
+        tempdis = m1[bID1] + dbb;
+        if(tempdis < d){
+            d = tempdis;
+            b1f = bID1;
+            d1f = m1[bID1];
+            dbbf = dbb;
+        }
+
+    }
+    int dis1_Dijk= Dijkstra(ID1,b1f,Nodes), dis2_Dijk= Dijkstra(b1f,ID2,Nodes);
+    cout<<ID1<<"("<<Nodes[ID1].isborder<<","<<Nodes[ID1].inleaf<<") "<<b1f<<"("<<Nodes[b1f].isborder<<","<<Nodes[b1f].inleaf<<") "<<ID2<<"("<<Nodes[ID2].isborder<<","<<Nodes[ID2].inleaf<<"): "<<d1f<<"("<<dis1_Dijk<<") "<<dbbf<<"("<<dis2_Dijk<<") "<<d<<"("<<Dijkstra(ID1,ID2,Nodes)<<")"<<endl;
+
+    return d;
+}
+
+int Gstartree::QueryPartiParti(int ID1,int ID2){
+    int d=INF;
+    assert(Nodes[ID1].isborder==false && Nodes[ID2].isborder==false);
+    int PID1=Nodes[ID1].inleaf, PID2=Nodes[ID2].inleaf;
+    int PosID1=Nodes[ID1].inleafpos, PosID2=Nodes[ID2].inleafpos;
+    vector<int> B1,B2;
+    int bID1,bID2,d1,d2;
+    int tempdis;
+    B1 = GTree[PID1].borders; B2 = GTree[PID2].borders;
+
+    map<int,int> m1,m2;
+    m1.clear();
+    m2.clear();
+    int lnNum1 = GTree[PID1].leafnodes.size();
+    int lnNum2 = GTree[PID2].leafnodes.size();
+    //get distances to corresponding boundary vertex
+    for(int i=0;i<B1.size();++i){
+        bID1 = B1[i];
+        d1 = GTree[PID1].mind[i*lnNum1 + PosID1];
+        m1.insert({bID1,d1});
+    }
+    for(int i=0;i<B2.size();++i){
+        bID2 = B2[i];
+        d2 = GTree[PID2].mind[i*lnNum2 + PosID2];
+        m2.insert({bID2,d2});
+    }
+    int b1f,b2f,d1f,d2f,dbb,dbbf;
+    //get distances between boundary vertex
+    for(int i=0;i<B1.size();++i){
+        bID1 = B1[i];
+        for(int j=0;j<B2.size();++j){
+            bID2 = B2[j];
+            dbb = QueryH2H(bID1,bID2);
+            tempdis = m1[bID1] + dbb + m2[bID2];
+            if(tempdis < d){
+                d = tempdis;
+                b1f = bID1; b2f = bID2;
+                d1f = m1[bID1]; d2f =  m2[bID2];
+                dbbf = dbb;
+            }
+        }
+    }
+    return d;
+}
+
 void Gstartree::CorrectnessCheck(int times){
     srand (time(NULL));
     int s, t;
-    int dis_Dijk, dis_GTree;
+    int dis1, dis2;
     Timer tt1,tt2;
     double time_Dijk=0,time_Q=0;
     double sameNodeT=0, diffNodeT=0;
     int times1=0, times2=0;
 
 //    times=1;
-    cout<<"Correctness check... Query number: "<<times;
+    cout<<"Correctness check... Query number: "<<times<<endl;
     for(int i=0;i<times;i++){//times
         s=rand()%node_num;
         t=rand()%node_num;
-//        s=9471; t=12235;
+//        s=146478; t=1323;//b-p
+//        s=1314; t=146478;//b-b
+//        s=138682; t=146478;//b-b
 
-        init_query(GTree);
-        tt2.start();
+        if(indexType==gtreeIndex){
+            init_query(GTree);
+            tt2.start();
 //        dis_GTree=Distance_query(s,t);
-        dis_GTree=dist_query(s,t);
-        tt2.stop();
+            dis1=dist_query(s,t);
+            tt2.stop();
+        }else if(indexType==tgtreeIndex){
+            tt2.start();
+            dis1=Query_TGTree(s,t);
+            tt2.stop();
+        }
+
         time_Q += tt2.GetRuntime();
         if(Nodes[s].inleaf==Nodes[t].inleaf){
             sameNodeT+=tt2.GetRuntime();
@@ -1480,18 +2146,20 @@ void Gstartree::CorrectnessCheck(int times){
         }
 
         tt1.start();
-        dis_Dijk=Dijkstra(s,t,Nodes);
+        dis2=Dijkstra(s,t,Nodes);
         tt1.stop();
         time_Dijk += tt1.GetRuntime();
 
-        if(dis_Dijk!=dis_GTree){
-            cout<<"InCorrect!! "<<s<<" "<<t<<" "<<dis_GTree<<" "<<dis_Dijk<<endl; exit(1);
+        if(dis1!=dis2){
+            cout<<"InCorrect!! "<<i<<": "<<s<<"("<<Nodes[s].isborder<<","<<Nodes[s].inleaf<<") "<<t<<"("<<Nodes[t].isborder<<","<<Nodes[t].inleaf<<") "<<dis1<<" "<<dis2<<endl;
+            Query_TGTreeDebug(s,t);
+            exit(1);
         }
 
         //cout<<"PID "<<VtoParID[s]<<" "<<VtoParID[t]<<endl;
     }
 //    cout << "Average run time of Dijkstra: "<<time_Dijk*1000/times<<" ms."<<endl;
-    cout << " ; Average time: "<<time_Q*1000/times<<" ms."<<endl;
+    cout << "Average time: "<<time_Q*1000/times<<" ms."<<endl;
     cout<<"Same leaf node query time: "<<1000*sameNodeT/times1<<" ms ("<<times1<<") ; different leaf node query time: "<<1000*diffNodeT/times2<<" ms ("<<times2<<")"<<endl;
     //cout<<"Correctness finish!"<<endl;
 }
@@ -1694,9 +2362,6 @@ inline int Gstartree::dist_query(int src, int dst) {
 }
 
 void Gstartree::dist_main(int run_times) {
-    bool ifDebug=false;
-//    ifDebug=true;
-
 //    for(int i=0;i<GTree.size();++i){
 //        if(GTree[i].isleaf){
 //            cout<<i<<"("<<GTree[i].leafnodes.size()<<"):";
@@ -1707,6 +2372,10 @@ void Gstartree::dist_main(int run_times) {
 //            break;
 //        }
 //    }
+
+    bool ifDebug=false;
+//    ifDebug=true;
+
     int ID1, ID2, num;
     vector<pair<int, int>> ODpair;
 
@@ -1734,11 +2403,14 @@ void Gstartree::dist_main(int run_times) {
 
     long double total_time = 0.0;
     int count = 0;
-    int dis_Dijk = 0;
-    int dis_Gtree = 0;
+    int dis1 = 0;
+    int dis2 = 0;
 
-
-    cout << "Begin query processing... Query number: "<<run_times<<endl;
+    cout << "Begin query processing... Query number: "<<run_times;
+    if(ifDebug){
+        cout<<" ; with correctness check.";
+    }
+    cout<<endl;
 
     Timer tt;
     double runT=0;
@@ -1747,10 +2419,17 @@ void Gstartree::dist_main(int run_times) {
     for (int i = 0; i < run_times; ++i) {//0
         ID1 = ODpair[i].first;
         ID2 = ODpair[i].second;
-        init_query(GTree);
-        tt.start();
-        dis_Gtree = dist_query(ID1, ID2);
-        tt.stop();
+        if(indexType==gtreeIndex){
+            init_query(GTree);
+            tt.start();
+            dis1 = dist_query(ID1, ID2);
+            tt.stop();
+        }else if(indexType==tgtreeIndex){
+            tt.start();
+            dis1 = Query_TGTree(ID1, ID2);
+            tt.stop();
+        }
+
         if(Nodes[ID1].inleaf==Nodes[ID2].inleaf){
             sameNodeT+=tt.GetRuntime();
             times1++;
@@ -1760,9 +2439,9 @@ void Gstartree::dist_main(int run_times) {
         }
         runT+=tt.GetRuntime();
         if(ifDebug){
-            dis_Dijk = Dijkstra(ID1,ID2,Nodes);
-            if(dis_Dijk != dis_Gtree){
-                cout << "Distance Error!!! " << ID1 << " " << ID2 << " : " << dis_Gtree << " " << dis_Dijk << endl;
+            dis2 = Dijkstra(ID1,ID2,Nodes);
+            if(dis1 != dis2){
+                cout << "Incorrect! " <<i<<": "<< ID1 << " " << ID2 << " : " << dis1 << " " << dis2 << endl;
             }
         }
         ++count;
@@ -1774,7 +2453,1955 @@ void Gstartree::dist_main(int run_times) {
     cout<<"Same leaf node query time: "<<1000*sameNodeT/times1<<" ms ("<<times1<<") ; different leaf node query time: "<<1000*diffNodeT/times2<<" ms ("<<times2<<")"<<endl;
 
 //    cout << (total_time / count) << endl;
+}
 
+
+/// For N-TS-HP
+//function of vertex ordering
+void Gstartree::getOverlayOrder(){
+    NodeOrder.assign(node_num,-1);
+    vNodeOrder.assign(node_num,-1);
+    int count=0;
+
+    int curID=0;
+    int curLevel=0;
+    int tempLevel;
+    //get boundary order by BFS
+//    getBOrder(curID,HighToLow);
+    queue<pair<int,int>> queue1;//vertex ID, tree level
+    queue1.push(make_pair(curID,0));
+    boundaryLevel.clear();
+    pair<int,int> topPair;
+    vector<int> currentB;
+    //Get order in top-down manner
+    while(!queue1.empty()){
+        topPair = queue1.front();
+        curID = topPair.first; tempLevel = topPair.second;
+        queue1.pop();
+        if(curLevel != tempLevel){
+            boundaryLevel.push_back(currentB);
+            currentB.clear();
+            curLevel = tempLevel;
+        }
+        if(!GTree[curID].children.empty()){
+
+            for(int i=0;i<GTree[curID].children.size();++i){
+                int pID = GTree[curID].children[i];
+                queue1.push(make_pair(pID,tempLevel+1));
+
+                for(int j=0;j<GTree[pID].borders.size();++j){
+                    int ID = GTree[pID].borders[j];
+                    if(!Nodes[ID].isborder){
+                        cout<<"Wrong border! "<<ID<<endl; exit(1);
+                    }
+                    if(Nodes[ID].isborder && NodeOrder[ID] == -1){//if ID is boundary vertex and it has never been assigned order
+                        count++;
+                        NodeOrder[ID] = node_num - count;
+                        assert(NodeOrder[ID]>=0 && NodeOrder[ID]<node_num);
+                        vNodeOrder[NodeOrder[ID]] = ID;
+                        currentB.push_back(ID);
+                    }
+                }
+            }
+        }
+    }
+
+    cout<<"Number of layers: "<<boundaryLevel.size()<<endl;
+//    cout<<"Node number of overlay graph: "<<OverlayGraph.size()<<endl;
+
+    if(count != overlayNodeNum){
+        cout<<"count inconsistent! "<<count<<" "<<overlayNodeNum<<endl; exit(1);
+    }
+
+//    for(int i=0;i<node_num;++i){
+//        if(NodeOrder[i] == -1){
+//            HighToLow.push_back(i);
+//            NodeOrder[i] = node_num - HighToLow.size();
+//            vNodeOrder[NodeOrder[i]] = i;
+//        }
+//    }
+//    assert(HighToLow.size() == node_num);
 
 }
+
+void Gstartree::getOriginalOverlayGraph(){
+    int neiID,weight;
+    OverlayGraph.assign(node_num,unordered_map<int,int>());
+    overlayNodeNum=0;
+    for(int i=0;i<Nodes.size();i++){
+        if(Nodes[i].isborder){
+            overlayNodeNum++;
+            for(int j=0;j<Nodes[i].adjnodes.size();j++){
+                neiID=Nodes[i].adjnodes[j], weight=Nodes[i].adjweight[j];
+                if(Nodes[neiID].isborder){
+                    OverlayGraph[i].insert({neiID,weight});
+                }
+            }
+        }
+    }
+    cout<<"Overlay graph size: "<<overlayNodeNum<<endl;
+}
+//function of obtaining the partition graphs
+/*void Gstartree::getPartiGraph(){
+    map<int,unordered_set<int>> partiVSet;
+    vector<int> leafNodes;
+    for(int i=0;i<GTree.size();++i){
+        if(GTree[i].isleaf){
+            leafNodes.push_back(i);
+
+            unordered_set<int> tempSet; tempSet.clear();
+            tempSet.insert(GTree[i].leafnodes.begin(), GTree[i].leafnodes.end());//get the partition vertex set
+            partiVSet.insert({i,tempSet});
+        }
+    }
+    int pID,ID;
+    int nid,wei;
+    for(int i=0;i<leafNodes.size();++i){
+        pID = leafNodes[i];
+        PartiGraph.insert({pID,unordered_map<int,vector<pair<int,int>>>()});
+        for(int j=0;j<GTree[pID].leafnodes.size();++j){
+            ID = GTree[pID].leafnodes[j];
+            vector<pair<int,int>> adjs;
+            for(int k=0;k<Nodes[ID].adjnodes.size();++k){
+                nid = Nodes[ID].adjnodes[k];
+                if(partiVSet[pID].find(nid) != partiVSet[pID].end()){//if found
+                    wei = Nodes[ID].adjweight[k];
+                    adjs.emplace_back(nid,wei);
+                }
+            }
+            PartiGraph[pID].insert({ID,adjs});
+        }
+    }
+}*/
+
+void Gstartree::hierarchy_shortest_path_calculation_NoBoundary(bool ifParallel){
+    //get partition graph
+    Timer tt;
+//    tt.start();
+//    getPartiGraph();
+//    tt.stop();
+//    cout<<"Time for partition graph generation: "<<tt.GetRuntime()<<" s."<<endl;
+
+    vector<int> leafNodes;
+    for(int i=0;i<GTree.size();++i){
+        if(GTree[i].isleaf){
+            leafNodes.push_back(i);
+        }
+    }
+    cout<<"Leaf node number (partition number): "<<leafNodes.size()<<endl;
+
+    tt.start();
+    /// It seems that G-tree is an unbalanced tree
+    // bottom up calculation
+    // temp graph
+//    vector<Node> graph;
+//    graph = Nodes;//original graph
+    vector<int> cands;
+    vector<int> result;
+    unordered_map<int, unordered_map<int,int> > vertex_pairs;//result of distance matrix
+
+    // do dijkstra
+    int s, t, tn, nid, cid, weight;
+    vector<int> tnodes, tweight;
+    set<int> nset;
+
+
+
+
+    int partiNum = leafNodes.size();
+
+    if(ifParallel){/// multi-thread
+//        vSmNode.reserve(node_num);
+//        for(int i = 0; i < node_num; i++)
+//        {
+//            Semaphore* s = new Semaphore(1);
+//            vSmNode.push_back(s);
+//        }
+        cout<<"Multi-thread computation for partition index."<<endl;
+        if(partiNum>thread_num){
+            int step=partiNum/thread_num;
+            boost::thread_group threadf;
+            for(int i=0;i<thread_num;i++){
+                pair<int,int> p;
+                p.first=i*step;
+                if(i==thread_num-1)
+                    p.second=partiNum;
+                else
+                    p.second=(i+1)*step;
+//                threadf.add_thread(new boost::thread(&Gstartree::leafNodeAllPair_No, this, p, boost::ref(leafNodes),boost::ref(PartiGraph)));
+                threadf.add_thread(new boost::thread(&Gstartree::leafNodeAllPair_No, this, p, boost::ref(leafNodes)));
+            }
+            threadf.join_all();
+        }else{
+            boost::thread_group threadf;
+            for(int pid=0;pid<partiNum;++pid) {
+//                threadf.add_thread(new boost::thread(&Gstartree::leafNodeAllPair_No, this, make_pair(pid,pid+1), boost::ref(leafNodes),boost::ref(PartiGraph)));
+                threadf.add_thread(new boost::thread(&Gstartree::leafNodeAllPair_No, this, make_pair(pid,pid+1), boost::ref(leafNodes)));
+            }
+            threadf.join_all();
+        }
+
+//        if(!vSmNode.empty()){
+//            for(int i = 0; i < node_num; i++)
+//                delete vSmNode[i];
+//            vSmNode.clear();
+//        }
+    }
+    else{/// single thread
+        /// Construct Li
+        cout<<"Single thread computation for partition index."<<endl;
+        for(int i=0;i<leafNodes.size();++i){
+            tn = leafNodes[i];
+            // cands = leafnodes
+            cands = GTree[tn].leafnodes;//for leaf node, the cands is the leafnodes
+            for(int j=0;j<cands.size();++j){
+                Nodes[cands[j]].inleaf = tn;
+                Nodes[cands[j]].inleafpos = j;
+            }
+            // union borders = borders;
+            GTree[tn].union_borders = GTree[tn].borders;
+
+            // start to do min dis
+            vertex_pairs.clear();
+            // for each border, do min dis
+            int cc = 0;
+            for ( int k = 0; k < GTree[tn].union_borders.size(); k++ ){
+                //printf("DIJKSTRA...LEAF=%d BORDER=%d\n", tn, GTree[tn].union_borders[k] );
+//                result = dijkstra_candidate( GTree[tn].union_borders[k], cands, graph );//distance vector from s to all borders
+//                result = dijkstra_candidate_No( GTree[tn].union_borders[k], cands, PartiGraph[tn] );//distance vector from s to all borders
+                result = dijkstra_candidate_No( GTree[tn].union_borders[k], cands, Nodes);//distance vector from s to all borders
+                //printf("DIJKSTRA...END\n");
+
+                // save to map
+                for ( int p = 0; p < result.size(); p ++ ){
+                    GTree[tn].mind.push_back( result[p] );//store the distance vector of s
+                    vertex_pairs[GTree[tn].union_borders[k]][cands[p]] = result[p];
+                }
+            }
+
+
+            // second, add inter connected edges (shortcuts)
+            for ( int k = 0; k < GTree[tn].borders.size(); k++ ){
+                s = GTree[tn].borders[k];
+                for ( int p = 0; p < GTree[tn].borders.size(); p++ ){
+                    if ( k == p ) continue;
+
+                    t = GTree[tn].borders[p];
+//                    graph[s].adjnodes.push_back( t );
+//                    graph[s].adjweight.push_back( vertex_pairs[s][t] );
+                    /// For Overlay graph
+                    if(OverlayGraph[s].find(t)==OverlayGraph[s].end()){//if not found
+                        OverlayGraph[s].insert({t,vertex_pairs[s][t]});
+                    }else{//if found
+                        if(OverlayGraph[s][t] > vertex_pairs[s][t]){//if equal
+                            OverlayGraph[s][t] = vertex_pairs[s][t];
+                        }
+                        else if(OverlayGraph[s][t] < vertex_pairs[s][t]){
+                            cout<<"Wrong for this case! "<<OverlayGraph[s][t]<<" "<<vertex_pairs[s][t]<<endl; exit(1);
+                        }
+                    }
+
+                }
+            }
+        }
+    }
+
+    tt.stop();
+    cout<<"The time used for leaf node index generation: "<<tt.GetRuntime()<<" s."<<endl;
+
+//    for(int i=0;i<vSmNode.size();++i){
+//        delete vSmNode[i];
+//    }
+}
+
+/*void Gstartree::leafNodeAllPair_No(pair<int,int> p, vector<int> & leafNodes, map<int,unordered_map<int,vector<pair<int,int>>>> & graphs){
+    vector<int> cands;
+    vector<int> result;
+    unordered_map<int, unordered_map<int,int> > vertex_pairs;//result of distance matrix
+    int s, t, tn, nid, cid, weight;
+    vector<int> tnodes, tweight;
+    set<int> nset;
+
+    for(int i=p.first;i<p.second;++i){
+        int tn = leafNodes[i];
+//        unordered_map<int,vector<pair<int,int>>> graph = graphs[tn];
+//        unordered_map<int,vector<pair<int,int>>> graph = PartiGraph[tn];
+        // cands = leafnodes
+        cands = GTree[tn].leafnodes;//for leaf node, the cands is the leafnodes
+        for(int j=0;j<cands.size();++j){
+            Nodes[cands[j]].inleaf = tn;
+            Nodes[cands[j]].inleafpos = j;
+        }
+        // union borders = borders;
+        GTree[tn].union_borders = GTree[tn].borders;
+
+        // start to do min dis
+        vertex_pairs.clear();
+        // for each border, do min dis
+        int cc = 0;
+        for ( int k = 0; k < GTree[tn].union_borders.size(); k++ ){
+            //printf("DIJKSTRA...LEAF=%d BORDER=%d\n", tn, GTree[tn].union_borders[k] );
+//            result = dijkstra_candidate( GTree[tn].union_borders[k], cands, graph );//distance vector from s to all borders
+//            result = dijkstra_candidate_No( GTree[tn].union_borders[k], cands,  PartiGraph[tn] );//distance vector from s to all borders
+            result = dijkstra_candidate_No( GTree[tn].union_borders[k], cands,  Nodes );//distance vector from s to all borders
+            //printf("DIJKSTRA...END\n");
+
+            // save to map
+            for ( int p = 0; p < result.size(); p ++ ){
+                GTree[tn].mind.push_back( result[p] );//store the distance vector of s
+                vertex_pairs[GTree[tn].union_borders[k]][cands[p]] = result[p];
+            }
+        }
+
+        // IMPORTANT! after all border finished, degenerate graph
+        // first, remove inward edges
+        for ( int k = 0; k < GTree[tn].borders.size(); k++ ){//for each border vertex
+            s = GTree[tn].borders[k];
+            tnodes.clear();
+            tweight.clear();
+            for ( int p = 0; p < Nodes[s].adjnodes.size(); p++ ){//for each adjacent vertex
+                nid = Nodes[s].adjnodes[p];
+                weight = Nodes[s].adjweight[p];
+                // if adj node in same tree node
+
+                if(BoundaryTag[nid]){
+                    vSmNode[s]->wait();
+                    E[s].insert({nid,make_pair(weight,1)});
+                    vSmNode[s]->notify();
+                }
+
+//                if ( graph[nid].gtreepath.size() <= i || graph[nid].gtreepath[i] != tn ){// add the higher-level nodes or other node in the same level
+//                    // only remain those useful vertices, i.e., borders
+//                    tnodes.push_back(nid);
+//                    tweight.push_back(weight);
+//                }
+            }
+            // cut it
+//                graph[s].adjnodes = tnodes;//update the adjacency lists of graph, only left the useful boundary vertices
+//                graph[s].adjweight = tweight;
+            /// For NeighborCon
+//            for(int p=0;p<tnodes.size();++p){
+//                E[s].insert({tnodes[p],make_pair(tweight[p],1)});
+//            }
+
+        }
+        // second, add inter connected edges (shortcuts)
+        for ( int k = 0; k < GTree[tn].borders.size(); k++ ){
+            for ( int p = 0; p < GTree[tn].borders.size(); p++ ){
+                if ( k == p ) continue;
+                s = GTree[tn].borders[k];
+                t = GTree[tn].borders[p];
+//                    graph[s].adjnodes.push_back( t );
+//                    graph[s].adjweight.push_back( vertex_pairs[s][t] );
+                /// For NeighborCon
+                vSmNode[s]->wait();
+                E[s].insert({t,make_pair(INF,1)});
+                vSmNode[s]->notify();
+
+                if(vertex_pairs[s][t]<INF){
+                    if(E[s].find(t) != E[s].end()){//if found
+                        if(E[s][t].first == vertex_pairs[s][t]){//if equal
+                            E[s][t].second += 1;
+                        }else{//if not equal
+                            assert(E[s][t].first > vertex_pairs[s][t]);
+                            E[s][t].first = vertex_pairs[s][t];
+                            E[s][t].second = 1;
+                        }
+                    }else{//if not found
+                        vSmNode[s]->wait();
+                        E[s].insert({t,make_pair(vertex_pairs[s][t],1)});
+                        vSmNode[s]->notify();
+                    }
+                }
+//                else{
+//                    cout<<"INF! "<<s<<" "<<t<<" "<<vertex_pairs[s][t]<<endl;
+//                }
+
+            }
+        }
+
+    }
+
+}*/
+
+void Gstartree::leafNodeAllPair_No(pair<int,int> p, vector<int> & leafNodes){
+    vector<int> cands;
+    vector<int> result;
+    unordered_map<int, unordered_map<int,int> > vertex_pairs;//result of distance matrix
+    int s, t, tn, nid, cid, weight;
+    vector<int> tnodes, tweight;
+    set<int> nset;
+
+    for(int i=p.first;i<p.second;++i){
+        int tn = leafNodes[i];
+//        unordered_map<int,vector<pair<int,int>>> graph = graphs[tn];
+//        unordered_map<int,vector<pair<int,int>>> graph = PartiGraph[tn];
+        // cands = leafnodes
+        cands = GTree[tn].leafnodes;//for leaf node, the cands is the leafnodes
+        for(int j=0;j<cands.size();++j){
+            Nodes[cands[j]].inleaf = tn;
+            Nodes[cands[j]].inleafpos = j;
+        }
+        // union borders = borders;
+        GTree[tn].union_borders = GTree[tn].borders;
+
+        // start to do min dis
+        vertex_pairs.clear();
+        // for each border, do min dis
+        int cc = 0;
+        for ( int k = 0; k < GTree[tn].union_borders.size(); k++ ){
+            //printf("DIJKSTRA...LEAF=%d BORDER=%d\n", tn, GTree[tn].union_borders[k] );
+//            result = dijkstra_candidate( GTree[tn].union_borders[k], cands, graph );//distance vector from s to all borders
+//            result = dijkstra_candidate_No( GTree[tn].union_borders[k], cands,  PartiGraph[tn] );//distance vector from s to all borders
+            result = dijkstra_candidate_No( GTree[tn].union_borders[k], cands,  Nodes );//distance vector from s to all borders
+            //printf("DIJKSTRA...END\n");
+
+            // save to map
+            for ( int p = 0; p < result.size(); p ++ ){
+                GTree[tn].mind.push_back( result[p] );//store the distance vector of s
+                vertex_pairs[GTree[tn].union_borders[k]][cands[p]] = result[p];
+            }
+        }
+
+
+        // second, add inter connected edges (shortcuts)
+        for ( int k = 0; k < GTree[tn].borders.size(); k++ ){
+            for ( int p = 0; p < GTree[tn].borders.size(); p++ ){
+                if ( k == p ) continue;
+                s = GTree[tn].borders[k];
+                t = GTree[tn].borders[p];
+//                    graph[s].adjnodes.push_back( t );
+//                    graph[s].adjweight.push_back( vertex_pairs[s][t] );
+                if(OverlayGraph[s].find(t)==OverlayGraph[s].end()){//if not found
+                    OverlayGraph[s].insert({t,vertex_pairs[s][t]});
+                }else{//if found
+                    if(OverlayGraph[s][t] > vertex_pairs[s][t]){//if equal
+                        OverlayGraph[s][t] = vertex_pairs[s][t];
+                    }
+                    else if(OverlayGraph[s][t] < vertex_pairs[s][t]){
+                        cout<<"Wrong for this case! "<<OverlayGraph[s][t]<<" "<<vertex_pairs[s][t]<<endl; exit(1);
+                    }
+                }
+
+            }
+        }
+
+    }
+
+}
+
+void Gstartree::H2HconOrderMT(){
+    Timer tt;
+    tt.start();
+    MDEContract();//MDE-based contraction
+//    VertexContraction();//Order-based contraction
+    tt.stop();
+    cout<<"MDE contraction time: "<<tt.GetRuntime()<<" s."<<endl;
+    makeTree();
+    makeIndex();
+
+}
+
+//Function of contracting vertices by MDE
+void Gstartree::MDEContract(){
+    Timer tt;
+    tt.start();
+    cout<<"Start MDE-based contraction..."<<endl;
+
+    NeighborCon.assign(node_num,vector<pair<int,pair<int,int>>>());
+    //get original overlay graph
+    E.assign(node_num,unordered_map<int,pair<int,int>>());
+    for(int i=0;i<OverlayGraph.size();i++){
+        if(!OverlayGraph[i].empty()){
+            for(auto it=OverlayGraph[i].begin();it!=OverlayGraph[i].end();++it){
+                E[i].insert(make_pair(it->first,make_pair(it->second,1)));
+            }
+        }
+    }
+    //for H2H update
+    SCconNodesMT.assign(node_num, map<int, vector<int>>());
+
+    _DD_.assign(node_num,0);
+//    _DD2_.assign(node_num,0);
+//    DD.assign(node_num,0); DD2.assign(node_num,0);
+
+    set<DegComp1> Deg;//min first
+//    vector<bool> active(node_num,false);//flag that indicate whether a vertex is active for contraction
+    int degree;
+    vector<bool> exist(node_num,false);//if in the core, all vertices is originally in core
+
+    for(int ID=0;ID<OverlayGraph.size();++ID){
+        if(Nodes[ID].isborder){
+            degree=E[ID].size();
+            exist[ID] = true;
+            if(degree > 0){//get degree
+                _DD_[ID]=degree;
+//            _DD2_[ID]=degree;
+                Deg.insert(DegComp1(ID));
+//            active[i] = true;
+            }else{
+                cout<<"Wrong!! Degree of "<<ID<<" is "<<degree<<endl;
+                exit(1);
+            }
+        }
+    }
+
+    vNodeOrder.clear();
+    for(int i=0;i<node_num;++i){
+        if(!Nodes[i].isborder){//if not border
+            vNodeOrder.push_back(i);
+        }
+    }
+//    while(vNodeOrder.size()<node_num-OverlayGraph.size()){
+//        vNodeOrder.push_back(-1);
+//    }
+    vector<bool> change(node_num,false);//whether the neighbor (degree) has changed
+
+    bool CutLabel=false;
+    int count=0;
+    int ID1,ID2;
+
+//    cout<<"192402: "<<E[192402].size()<<" "<<Nodes[192402].inleaf<<" "<<Nodes[192402].isborder<<endl;
+//    for(auto i1=E[192402].begin();i1!=E[192402].end();++i1){
+//        cout<<"E "<<i1->first<<" "<<Nodes[i1->first].inleaf<<" "<<Nodes[i1->first].isborder<<endl;;
+//    }
+//    for(auto i1=Nodes[192402].adjnodes.begin();i1!=Nodes[192402].adjnodes.end();++i1){
+//        cout<<"Adj "<<*i1<<" "<<Nodes[*i1].inleaf<<" "<<Nodes[*i1].isborder<<endl;
+//    }
+
+    //Get the order of all vertices by MDE
+    while(!Deg.empty()){
+        count+=1;
+        int x=(*Deg.begin()).x;//minimum degree first
+
+        while(change[x]){//update the degree if it is changed
+            Deg.erase(DegComp1(x));
+//            Deg.erase(Deg.begin());
+            _DD_[x]=E[x].size();
+//            _DD2_[x]=E[x].size();
+            Deg.insert(DegComp1(x));
+            change[x]=false;
+            x=(*Deg.begin()).x;
+        }
+//        cout<<x<<" "<<E[x].size()<<endl;
+        vNodeOrder.push_back(x);//least important vertex first
+        Deg.erase(Deg.begin());
+
+//        vector<pair<int,int>> Neigh; Neigh.clear();
+//        for(auto it=E[x].begin();it!=E[x].end();it++){//for the neighbors of x
+//            if(existCore[(*it).first]){//if in the core
+//                Neigh.push_back(*it);
+//            }
+//        }
+//        NeighborConCore[x].assign(Neigh.begin(),Neigh.end());//for core vertex, the neighbors are all truly-core vertices
+        vector<pair<int,pair<int,int>>> Neigh; //Neigh.clear();
+        for(auto it=E[x].begin();it!=E[x].end();it++){
+            if(exist[(*it).first]){
+                Neigh.push_back(*it);
+            }
+        }
+        if(Neigh.empty() && !Deg.empty()){
+            cout<<"!!! Neigh is empty for "<<x<<" : "<<E[x].size()<<" "<<Nodes[x].adjnodes.size()<<" "<<count<<endl;
+//            exit(1);
+        }
+        NeighborCon[x].assign(Neigh.begin(),Neigh.end());
+
+        exist[x]=false;
+        //delete the star
+        for(int i=0;i<Neigh.size();i++){
+            int y=Neigh[i].first;
+            deleteE(x,y);//delete x from y's adjacency list
+            change[y]=true;
+        }
+        //add all-pair neighbors
+        for(int i=0;i<Neigh.size();i++) {
+            ID1 = Neigh[i].first;
+            for (int j = i + 1; j < Neigh.size(); j++) {
+                ID2 = Neigh[j].first;
+                insertE(ID1, ID2, Neigh[i].second.first + Neigh[j].second.first);
+                /// For TD update
+
+                if(Neigh[i].first<Neigh[j].first)
+                    SCconNodesMT[Neigh[i].first][Neigh[j].first].push_back(x);//no direction
+                else if(Neigh[j].first<Neigh[i].first)
+                    SCconNodesMT[Neigh[j].first][Neigh[i].first].push_back(x);
+
+                change[ID1] = true;
+                change[ID2] = true;
+            }
+        }
+
+    }
+    tt.stop();
+    cout<<"The time used for contraction: "<<tt.GetRuntime()<<" s."<<endl;
+
+    if(vNodeOrder.size()!=node_num){
+        cout<<"vNodeOrder size incorrect! "<<vNodeOrder.size()<<endl;
+        exit(1);
+    }
+    NodeOrder.assign(node_num,-1);
+    for(int k=0;k<vNodeOrder.size();k++){
+        ID1=vNodeOrder[k];
+        if(ID1>=0 && ID1<node_num){
+            NodeOrder[ID1]=k;
+        }else{
+            cout<<"Wrong ID! "<<ID1<<" "<<k<<endl; exit(1);
+        }
+
+    }
+//    cout << "???" << endl;
+//    while(vNodeOrder.size()<node_num){
+//        vNodeOrder.push_back(-1);
+//    }
+
+}
+//Function of contracting vertices by given order
+void Gstartree::VertexContraction(){
+    Timer tt;
+    tt.start();
+    cout<<"Start contraction..."<<endl;
+
+    //for H2H update
+    vector<bool> exist(node_num,false);//if in the core, all vertices is originally in core
+    SCconNodesMT.assign(node_num, map<int, vector<int>>());
+    NeighborCon.assign(node_num,vector<pair<int,pair<int,int>>>());//temporal graph to store Neighbors in the core, for graph contraction
+    //get original overlay graph
+    E.assign(node_num,unordered_map<int,pair<int,int>>());
+    for(int i=0;i<OverlayGraph.size();i++){
+        if(!OverlayGraph[i].empty()){
+            exist[i]=true;
+            for(auto it=OverlayGraph[i].begin();it!=OverlayGraph[i].end();++it){
+                E[i].insert(make_pair(it->first,make_pair(it->second,1)));
+            }
+        }
+    }
+
+    _DD_.assign(node_num,0);
+//    _DD2_.assign(node_num,0);
+//    DD.assign(node_num,0); DD2.assign(node_num,0);
+
+//    vector<bool> active(node_num,false);//flag that indicate whether a vertex is active for contraction
+    int degree;
+
+
+
+//    while(vNodeOrder.size()<node_num-OverlayGraph.size()){
+//        vNodeOrder.push_back(-1);
+//    }
+    vector<bool> change(node_num,false);//whether the neighbor (degree) has changed
+
+
+
+    bool CutLabel=false;
+    int count=0;
+    int ID1,ID2;
+
+//    cout<<"192402: "<<E[192402].size()<<" "<<Nodes[192402].inleaf<<" "<<Nodes[192402].isborder<<endl;
+//    for(auto i1=E[192402].begin();i1!=E[192402].end();++i1){
+//        cout<<"E "<<i1->first<<" "<<Nodes[i1->first].inleaf<<" "<<Nodes[i1->first].isborder<<endl;;
+//    }
+//    for(auto i1=Nodes[192402].adjnodes.begin();i1!=Nodes[192402].adjnodes.end();++i1){
+//        cout<<"Adj "<<*i1<<" "<<Nodes[*i1].inleaf<<" "<<Nodes[*i1].isborder<<endl;
+//    }
+
+    //Get the order of all vertices by MDE
+    for(int i=node_num-overlayNodeNum;i<node_num;++i){
+        count+=1;
+        int x=vNodeOrder[i];
+        assert(x>=0 && x<node_num);
+        if(!Nodes[x].isborder){
+            cout<<"wrong for border! "<<x<<endl; exit(1);
+        }
+        vector<pair<int,pair<int,int>>> Neigh; //Neigh.clear();
+        for(auto it=E[x].begin();it!=E[x].end();it++){
+            if(exist[(*it).first]){
+                Neigh.push_back(*it);
+            }
+        }
+
+        NeighborCon[x].assign(Neigh.begin(),Neigh.end());
+
+        exist[x]=false;
+        //delete the star
+        for(int i=0;i<Neigh.size();i++){
+            int y=Neigh[i].first;
+            deleteE(x,y);//delete x from y's adjacency list
+            change[y]=true;
+        }
+        //add all-pair neighbors
+        for(int i=0;i<Neigh.size();i++) {
+            ID1 = Neigh[i].first;
+            for (int j = i + 1; j < Neigh.size(); j++) {
+                ID2 = Neigh[j].first;
+                insertE(ID1, ID2, Neigh[i].second.first + Neigh[j].second.first);
+                /// For TD update
+
+                if(Neigh[i].first<Neigh[j].first)
+                    SCconNodesMT[Neigh[i].first][Neigh[j].first].push_back(x);//no direction
+                else if(Neigh[j].first<Neigh[i].first)
+                    SCconNodesMT[Neigh[j].first][Neigh[i].first].push_back(x);
+
+                change[ID1] = true;
+                change[ID2] = true;
+            }
+        }
+
+    }
+    tt.stop();
+    cout<<"The time used for contraction: "<<tt.GetRuntime()<<" s."<<endl;
+
+
+//    cout << "???" << endl;
+//    while(vNodeOrder.size()<node_num){
+//        vNodeOrder.push_back(-1);
+//    }
+
+}
+
+void Gstartree::makeTree(){
+    vector<int> vecemp; //vecemp.clear();
+    VidtoTNid.assign(node_num,vecemp);
+
+    rank.assign(node_num,0);
+    //Tree.clear();
+    int len=vNodeOrder.size()-1;
+    heightMax=0;
+    if(vNodeOrder.size()!=node_num){
+        cout<<"vNodeOrder size wrong! "<<vNodeOrder.size()<<" "<<node_num<<endl; exit(1);
+    }
+
+    TDNode rootn;
+    int x=vNodeOrder[len];
+    //cout<<"len "<<len<<" , ID "<<x<<endl;
+    assert(x>=0 && x<node_num);
+    rootn.vert=NeighborCon[x];
+    rootn.uniqueVertex=x;
+    rootn.pa=-1;
+    rootn.height=1;
+    rank[x]=0;
+    Tree.push_back(rootn);
+    len--;
+
+
+    int nn;
+    for(;len>=0;len--){
+//        if(len%100==0){
+//            cout<<"len: "<<len<<endl;
+//        }
+        x=vNodeOrder[len];
+        assert(x>=0 && x<node_num);
+        if(!Nodes[x].isborder){
+            break;
+        }
+        if(treeWidth<NeighborCon[x].size()){
+            treeWidth=NeighborCon[x].size();
+        }
+        TDNode nod;
+        nod.vert=NeighborCon[x];
+        nod.uniqueVertex=x;
+        int pa=match(x,NeighborCon[x]);
+        Tree[pa].ch.push_back(Tree.size());
+        nod.pa=pa;
+        nod.height=Tree[pa].height+1;
+
+        nod.hdepth=Tree[pa].height+1;
+        for(int i=0;i<NeighborCon[x].size();i++){
+            nn=NeighborCon[x][i].first;
+            VidtoTNid[nn].push_back(Tree.size());
+            if(Tree[rank[nn]].hdepth<Tree[pa].height+1)
+                Tree[rank[nn]].hdepth=Tree[pa].height+1;
+        }
+        if(nod.height>heightMax)
+            heightMax=nod.height;
+        rank[x]=Tree.size();
+        Tree.push_back(nod);
+//        cout<<"len "<<len<<" , ID "<<x<<" ; "<<NeighborCon[x].size()<<endl;
+//        if(len == 263982){
+//            cout<<len<<" "<<NeighborCon[x].size()<<endl;
+//        }
+    }
+    cout<<"Tree size: "<<Tree.size()<<" ; Treewidth: "<<treeWidth<<" ; Tree height: "<<heightMax<<endl;
+    if(Tree.size()!=overlayNodeNum){
+        cout<<"Tree number inconsistent! "<<Tree.size()<<" "<<overlayNodeNum<<endl; exit(1);
+    }
+}
+
+void Gstartree::makeIndex(){
+    makeRMQ();
+
+    //initialize
+    vector<int> list; //list.clear();
+    list.push_back(Tree[0].uniqueVertex);
+    Tree[0].pos.clear();
+    Tree[0].pos.push_back(0);
+
+    for(int i=0;i<Tree[0].ch.size();i++){
+        makeIndexDFS(Tree[0].ch[i],list);
+    }
+
+}
+
+int Gstartree::match(int x,vector<pair<int,pair<int,int>>> &vert) {
+    if(vert.empty()){
+        cout<<"Empty vert! "<<x<<endl;
+        exit(1);
+    }
+    int nearest = vert[0].first;
+    for (int i = 1; i < vert.size(); i++) {
+        if (rank[vert[i].first] > rank[nearest])
+            nearest = vert[i].first;
+    }
+    int p = rank[nearest];
+    return p;
+}
+
+void Gstartree::makeRMQDFS(int p, int height){
+    toRMQ[p] = EulerSeq.size();
+    EulerSeq.push_back(p);
+    for (int i = 0; i < Tree[p].ch.size(); i++){
+        makeRMQDFS(Tree[p].ch[i], height + 1);
+        EulerSeq.push_back(p);
+    }
+}
+
+void Gstartree::makeRMQ(){
+    //EulerSeq.clear();
+    toRMQ.assign(node_num,0);
+    //RMQIndex.clear();
+    makeRMQDFS(0, 1);
+    RMQIndex.push_back(EulerSeq);
+
+    int m = EulerSeq.size();
+    for (int i = 2, k = 1; i < m; i = i * 2, k++){
+        vector<int> tmp;
+        //tmp.clear();
+        tmp.assign(m,0);
+        for (int j = 0; j < m - i; j++){
+            int x = RMQIndex[k - 1][j], y = RMQIndex[k - 1][j + i / 2];
+            if (Tree[x].height < Tree[y].height)
+                tmp[j] = x;
+            else tmp[j] = y;
+        }
+        RMQIndex.push_back(tmp);
+    }
+}
+
+int Gstartree::LCAQuery(int _p, int _q){
+    int p = toRMQ[_p], q = toRMQ[_q];
+    if (p > q){
+        int x = p;
+        p = q;
+        q = x;
+    }
+    int len = q - p + 1;
+    int i = 1, k = 0;
+    while (i * 2 < len){
+        i *= 2;
+        k++;
+    }
+    q = q - i + 1;
+    if (Tree[RMQIndex[k][p]].height < Tree[RMQIndex[k][q]].height)
+        return RMQIndex[k][p];
+    else return RMQIndex[k][q];
+}
+
+void Gstartree::makeIndexDFS(int p, vector<int>& list){
+    //initialize
+    int NeiNum=Tree[p].vert.size();
+    Tree[p].pos.assign(NeiNum+1,0);
+    Tree[p].dis.assign(list.size(),INF);
+    Tree[p].cnt.assign(list.size(),0);
+    Tree[p].FN.assign(list.size(),true);
+    Tree[p].vAncestor=list;
+
+    //pos
+    //map<int,Nei> Nmap; Nmap.clear();//shortcut infor ordered by the pos ID
+    for(int i=0;i<NeiNum;i++){
+        for(int j=0;j<list.size();j++){
+            if(Tree[p].vert[i].first==list[j]){
+                Tree[p].pos[i]=j;
+                Tree[p].dis[j]=Tree[p].vert[i].second.first;
+                Tree[p].cnt[j]=1;
+                break;
+            }
+        }
+    }
+    Tree[p].pos[NeiNum]=list.size();
+
+
+    //dis
+    for(int i=0;i<NeiNum;i++){
+        int x=Tree[p].vert[i].first;
+        int disvb=Tree[p].vert[i].second.first;
+        int k=Tree[p].pos[i];//the kth ancestor is x
+
+        for(int j=0;j<list.size();j++){
+            int y=list[j];//the jth ancestor is y
+
+            int z;//the distance from x to y
+            if(k!=j){
+                if(k<j)
+                    z=Tree[rank[y]].dis[k];
+                else if(k>j)
+                    z=Tree[rank[x]].dis[j];
+
+                if(Tree[p].dis[j]>z+disvb){
+                    Tree[p].dis[j]=z+disvb;
+                    Tree[p].FN[j]=false;
+                    Tree[p].cnt[j]=1;
+                }else if(Tree[p].dis[j]==z+disvb){
+                    Tree[p].cnt[j]+=1;
+                }
+            }
+        }
+    }
+
+    //nested loop
+    list.push_back(Tree[p].uniqueVertex);
+    for(int i=0;i<Tree[p].ch.size();i++){
+        makeIndexDFS(Tree[p].ch[i],list);
+    }
+    list.pop_back();
+}
+
+
+//function of deleting u from v's neighbor
+void Gstartree::deleteE(int u,int v){
+//    if(E[u].find(v)!=E[u].end()){
+//        E[u].erase(E[u].find(v));
+//        //DD[u]--;
+//    }
+
+    if(E[v].find(u)!=E[v].end()){
+        E[v].erase(E[v].find(u));
+        //DD[v]--;
+    }
+}
+//function of inserting u to v's neighbor and verse vice.
+void Gstartree::insertE(int u,int v,int w){
+    if(E[u].find(v)==E[u].end()){
+        E[u].insert(make_pair(v,make_pair(w,1)));
+        //DD[u]++;
+        //DD2[u]++;
+    }
+    else{
+        if(E[u][v].first>w)
+            E[u][v]=make_pair(w,1);
+        else if(E[u][v].first==w)
+            E[u][v].second+=1;
+    }
+
+    if(E[v].find(u)==E[v].end()){
+        E[v].insert(make_pair(u,make_pair(w,1)));
+        //DD[v]++;
+        //DD2[v]++;
+    }
+    else{
+        if(E[v][u].first>w)
+            E[v][u]=make_pair(w,1);
+        else if(E[v][u].first==w)
+            E[v][u].second+=1;
+    }
+}
+
+void Gstartree::insertEMTorder(int u,int v,int w){
+    if(E[u].find(v)==E[u].end()){
+        E[u].insert(make_pair(v,make_pair(w,1)));
+    }
+    else{
+        if(E[u][v].first>w)
+            E[u][v]=make_pair(w,1);
+        else if(E[u][v].first==w)
+            E[u][v].second+=1;
+    }
+}
+
+//original version
+/*vector<int> Gstartree::dijkstra_candidate_No( int s, vector<int> &cands, unordered_map<int,vector<pair<int,int>>> &graph){
+    // init
+    set<int> todo;
+    todo.clear();
+    todo.insert(cands.begin(), cands.end());//get the partition vertex set
+
+    map<int,int> result;
+    result.clear();
+    set<int> visited;
+    visited.clear();
+//    unordered_map<int,int> q;//map used for mapping vertex id to its distance from source vertex
+//    benchmark::heap<2, int, int> q(node_num);
+    priority_queue<pair<int,int>,vector<pair<int,int>>,greater<pair<int,int>>> q;
+//    vector<bool> closed(node_num, false); //flag vector of whether closed
+    vector<Distance> cost(node_num, INF);   //vector of cost
+    int temp_dis;
+    q.push(make_pair(0,s));
+    cost[s] = 0;
+//    q[s] = 0;//map of source vertex
+
+    // start
+    int min, minpos, adjnode, weight;
+    pair<int,int> topE;
+    while( ! todo.empty() && ! q.empty() ){
+        min = -1;
+        topE=q.top();
+        min=topE.first; minpos=topE.second;
+        q.pop();
+        // put min to result, add to visited
+        while(visited.find(minpos)!=visited.end()){//if found
+            if(!q.empty()){
+                topE=q.top();
+                min=topE.first; minpos=topE.second;
+                q.pop();
+            }else{
+                cout<<"priority queue empty."<<endl;
+                goto Results;
+            }
+        }
+
+        if(visited.find(minpos)==visited.end()){//if not found
+            result[minpos] = min;
+            visited.insert( minpos );
+        }else{
+            cout<<"Wrong!"<<endl; exit(1);
+        }
+
+        if ( todo.find( minpos ) != todo.end() ){//if found, erase visited vertex
+            todo.erase( minpos );
+        }
+
+        // expand on graph (the original graph)
+        for ( int i = 0; i < graph[minpos].size(); i++ ){
+            adjnode = graph[minpos][i].first;
+            if ( visited.find( adjnode ) != visited.end() ){//if found, ie, it is visited
+                continue;
+            }
+            weight = graph[minpos][i].second;//edge weight
+            temp_dis = min + weight;
+            if ( temp_dis < cost[adjnode] ){
+                q.push(make_pair(temp_dis,adjnode));
+                cost[adjnode] = temp_dis;
+            }
+        }
+    }
+
+    Results:
+    // output
+    vector<int> output;
+    for ( int i = 0; i < cands.size(); i++ ){
+        if(result.find(cands[i]) != result.end()){//if found
+            output.push_back( result[cands[i]] );//only push the distance result of vertex in cands
+        }else{
+            output.push_back( INF );//only push the distance result of vertex in cands
+        }
+
+    }
+
+    // return
+    return output;//vector of distance matrix values
+}*/
+
+vector<int> Gstartree::dijkstra_candidate_No( int s, vector<int> &cands, vector<Node> &graph){
+    // init
+    int PID=Nodes[s].inleaf;
+
+    set<int> todo;
+    todo.clear();
+    todo.insert(cands.begin(), cands.end());//get the partition vertex set
+
+    map<int,int> result;
+    result.clear();
+    set<int> visited;
+    visited.clear();
+//    unordered_map<int,int> q;//map used for mapping vertex id to its distance from source vertex
+//    benchmark::heap<2, int, int> q(node_num);
+    priority_queue<pair<int,int>,vector<pair<int,int>>,greater<pair<int,int>>> q;
+//    vector<bool> closed(node_num, false); //flag vector of whether closed
+    vector<Distance> cost(node_num, INF);   //vector of cost
+    int temp_dis;
+    q.push(make_pair(0,s));
+    cost[s] = 0;
+//    q[s] = 0;//map of source vertex
+
+    // start
+    int min, minpos, adjnode, weight;
+    pair<int,int> topE;
+    while( ! todo.empty() && ! q.empty() ){
+        min = -1;
+        topE=q.top();
+        min=topE.first; minpos=topE.second;
+        q.pop();
+        // put min to result, add to visited
+        while(visited.find(minpos)!=visited.end()){//if found
+            if(!q.empty()){
+                topE=q.top();
+                min=topE.first; minpos=topE.second;
+                q.pop();
+            }else{
+                cout<<"priority queue empty."<<endl;
+                goto Results;
+            }
+        }
+
+        if(visited.find(minpos)==visited.end()){//if not found
+            result[minpos] = min;
+            visited.insert( minpos );
+        }else{
+            cout<<"Wrong!"<<endl; exit(1);
+        }
+
+        if ( todo.find( minpos ) != todo.end() ){//if found, erase visited vertex
+            todo.erase( minpos );
+        }
+
+        // expand on graph (the original graph)
+        for ( int i = 0; i < graph[minpos].adjnodes.size(); i++ ){
+            adjnode = graph[minpos].adjnodes[i];
+//        for ( int i = 0; i < graph[minpos].size(); i++ ){
+//            adjnode = graph[minpos][i].first;
+            if(Nodes[adjnode].inleaf != PID){
+                continue;
+            }
+            if ( visited.find( adjnode ) != visited.end() ){//if found, ie, it is visited
+                continue;
+            }
+//            weight = graph[minpos][i].second;//edge weight
+            weight = graph[minpos].adjweight[i];//edge weight
+            temp_dis = min + weight;
+            if ( temp_dis < cost[adjnode] ){
+                q.push(make_pair(temp_dis,adjnode));
+                cost[adjnode] = temp_dis;
+            }
+        }
+    }
+
+    Results:
+    // output
+    vector<int> output;
+    for ( int i = 0; i < cands.size(); i++ ){
+        if(result.find(cands[i]) != result.end()){//if found
+            output.push_back( result[cands[i]] );//only push the distance result of vertex in cands
+        }else{
+            output.push_back( INF );//only push the distance result of vertex in cands
+        }
+
+    }
+
+    // return
+    return output;//vector of distance matrix values
+}
+
+void Gstartree::IndexSize() {
+    long long m=0,m1=0,m2=0;
+
+    for(int i=0;i<GTree.size();++i){
+        m1+=GTree[i].mind.size()*sizeof(int);
+    }
+
+    for(int i=0;i<Tree.size();i++){
+        m2+=Tree[i].dis.size()*sizeof(int);//dis
+        m2+=Tree[i].pos.size()*sizeof(int);//pos
+        m2+=Tree[i].dis.size()*sizeof(int);//cnt
+        m2+=Tree[i].vert.size()*3*sizeof(int);//neighID/weight/count
+    }
+
+    m=m1+m2;
+    cout<<"Partition Index size: "<<(double)m1/1024/1024<<" MB."<<endl;
+    cout<<"Overlay Index size: "<<(double)m2/1024/1024<<" MB."<<endl;
+    cout<<"Overall Index size: "<<(double)m/1024/1024<<" MB."<<endl;
+}
+
+
+//// Index maintenance
+void Gstartree::TGTreeIndexUpdate(vector<pair<pair<int,int>,pair<int,int> > > & updates, bool ifParallel, int updateType){//update(<ID1,ID2>,oldW) vector<pair<pair<int,int>,int> > & updates,
+
+//    double ave_time = 0;
+    int ID1,ID2,oldW,newW;
+    vector<pair<pair<int,int>,pair<int,int> > > uWithinLeafNode;// edge update within the same leaf node (<ID1,ID2>,<oldW,newW>)
+    vector<pair<pair<int,int>,pair<int,int> > > uCrossLeafNode;// edge/shortcut update among borders (<ID1,ID2>,<oldW,newW>)
+    bool flag_borderUpdate = false;//whether there is border update of leaf node
+//    Timer tt;
+//    tt.start();
+
+    for(int i=0;i<updates.size();++i){//for each edge update
+        ID1 = updates[i].first.first;
+        ID2 = updates[i].first.second;
+        oldW = updates[i].second.first;
+        newW = updates[i].second.second;
+
+//        cout<<ID1 << " "<<ID2<<" ("<<oldW<<"->"<<newW<<") "<<endl;
+        //update edge weight
+        for(int j=0;j<Nodes[ID1].adjnodes.size();j++){
+            if(Nodes[ID1].adjnodes[j]==ID2){
+                assert(Nodes[ID1].adjweight[j] == oldW);
+                Nodes[ID1].adjweight[j]=newW;
+                break;
+            }
+        }
+        for(int j=0;j<Nodes[ID2].adjnodes.size();j++){
+            if(Nodes[ID2].adjnodes[j]==ID1){
+                assert(Nodes[ID2].adjweight[j] == oldW);
+                Nodes[ID2].adjweight[j]=newW;
+                break;
+            }
+        }
+        //identify the edge type
+        if(Nodes[ID1].inleaf == Nodes[ID2].inleaf){//if it is an update within the leaf node
+            uWithinLeafNode.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+        }else{//if it is an update among the leaf nodes
+            uCrossLeafNode.emplace_back(make_pair(ID1,ID2),make_pair(oldW,newW));
+            flag_borderUpdate = true;
+        }
+    }
+
+    /// update processing
+    int lnID;
+//        int ID1_pos,ID2_pos;
+    vector<Node> graph;//temp graph
+    graph = Nodes;//original graph
+
+    /// Update the leaf nodes
+    Timer tt1;
+    tt1.start();
+    // for update within the same leaf node
+    vector<pair<pair<int,int>,pair<int,int> > > testData;
+    map<pair<int,int>,pair<int,int>> affectedBPairs;
+    if(!uWithinLeafNode.empty()){//if same-leaf node update
+        for(auto it=uWithinLeafNode.begin();it!=uWithinLeafNode.end();++it){//deal with each update within leaf node
+            ID1 = it->first.first; ID2 = it->first.second; oldW = it->second.first; newW = it->second.second;
+            assert(Nodes[ID1].inleaf == Nodes[ID2].inleaf);
+            int PID = Nodes[ID1].inleaf;
+
+            PartitionUpdate_No(PID,affectedBPairs,false);
+            //update overlay graph index
+            if(!affectedBPairs.empty()){
+//                cout<<" affectedBPairs size: "<<affectedBPairs.size()<<endl;
+                if(!uCrossLeafNode.empty()){//if there is cross-leaf updates
+                    cout<<"Multiple update: in-leaf node and cross-leaf node."<<endl;
+                    for(auto it=uCrossLeafNode.begin();it!=uCrossLeafNode.end();++it){
+                        oldW=it->second.first; newW=it->second.second;
+                        if(it->first.first<it->first.second){
+                            ID1=it->first.first, ID2=it->first.second;
+                        }else{
+                            ID1=it->first.second, ID2=it->first.first;
+                        }
+                        if(affectedBPairs.find(make_pair(ID1,ID2))!=affectedBPairs.end()){//if found
+                            if(newW<affectedBPairs[make_pair(ID1,ID2)].second){
+                                affectedBPairs[make_pair(ID1,ID2)].second=newW;
+                            }
+                        }else{//if not found
+                            affectedBPairs.insert({make_pair(ID1,ID2), make_pair(oldW,newW)});
+                        }
+                    }
+                    for(auto it=affectedBPairs.begin();it!=affectedBPairs.end();++it){
+                        testData.emplace_back(it->first,it->second);
+                    }
+                }
+                else{//if there is no cross-leaf updates
+                    int olddis, newdis;
+                    for(auto it=affectedBPairs.begin();it!=affectedBPairs.end();++it){
+                        ID1=it->first.first; ID2=it->first.second; newdis=it->second.second;
+                        if(OverlayGraph[ID1].find(ID2) != OverlayGraph[ID1].end()){//if found
+                            olddis=OverlayGraph[ID1][ID2];
+                        }else{//if not found
+                            cout<<"Not found edge e("<<ID1<<","<<ID2<<") in overlay graph!"<<endl; exit(1);
+                        }
+                        if(updateType==DECREASE){
+                            if(olddis>newdis){
+                                testData.emplace_back(make_pair(ID1,ID2), make_pair(olddis,newdis));
+                            }
+                        }else if(updateType==INCREASE){
+                            if(newdis>olddis){
+                                testData.emplace_back(make_pair(ID1,ID2), make_pair(olddis,newdis));
+                            }else if(newdis<olddis){
+                                cout<<"Something wrong happens. "<<ID1<<"("<<Nodes[ID1].isborder<<") "<<ID2<<"("<<Nodes[ID2].isborder<<") : "<<newdis<<" "<<olddis<< endl;
+                                exit(1);
+                            }
+                        }
+
+                    }
+                }
+//                for(auto it=affectedBPairs.begin();it!=affectedBPairs.end();++it){
+//                    testData.emplace_back(it->first,it->second);
+//                }
+            }
+        }
+    }
+    else{
+        testData=uCrossLeafNode;
+    }
+
+
+
+//    cout<<"affectedBPairs size: "<<affectedBPairs.size()<<" ; testData size: "<<testData.size()<< endl;
+//    for(int i=0;i<testData.size();++i){
+//        ID1=testData[i].first.first, ID2=testData[i].first.second, oldW=testData[i].second.first, newW=testData[i].second.second;
+//        cout<<i<<": "<<ID1<<"("<<Nodes[ID1].isborder<<","<<Nodes[ID1].inleaf<<") "<<ID2<<"("<<Nodes[ID2].isborder<<","<<Nodes[ID2].inleaf<<") "<<oldW<<" "<<newW<<endl;
+//    }
+    /// Update overlay index
+    if(updateType == DECREASE){
+        H2HdecBat(testData);
+    }else if(updateType == INCREASE){
+        H2HincBatMT(testData);
+    }
+
+}
+
+
+void Gstartree::PartitionUpdate_No(int tn, map<pair<int,int>,pair<int,int>> & affectedBPairs, bool ifParallel){
+
+    /// Construct Li
+    vector<int> cands;
+    vector<int> result;
+    int s, t, nid, cid, weight, ID;
+
+
+    // cands = leafnodes
+    cands = GTree[tn].leafnodes;//for leaf node, the cands is the leafnodes
+    int vNum = cands.size();
+    // union borders = borders;
+//    GTree[tn].union_borders = GTree[tn].borders;
+    assert(GTree[tn].union_borders.size() == GTree[tn].borders.size());
+    int bNum = GTree[tn].borders.size();
+
+    if(ifParallel){/// multi-thread
+
+        if(bNum>thread_num){
+            int step=bNum/thread_num;
+            boost::thread_group threadf;
+            for(int i=0;i<thread_num;i++){
+                pair<int,int> p;
+                p.first=i*step;
+                if(i==thread_num-1)
+                    p.second=bNum;
+                else
+                    p.second=(i+1)*step;
+                threadf.add_thread(new boost::thread(&Gstartree::boundaryVUpdate, this, p, tn, boost::ref(cands),boost::ref(affectedBPairs)));
+            }
+            threadf.join_all();
+        }else{
+            boost::thread_group threadf;
+            for(int pid=0;pid<bNum;++pid) {
+                threadf.add_thread(new boost::thread(&Gstartree::boundaryVUpdate, this, make_pair(pid,pid+1), tn, boost::ref(cands),boost::ref(affectedBPairs)));
+            }
+            threadf.join_all();
+        }
+    }
+    else{///single thread
+        // for each border, do min dis
+        int cc = 0;
+        for ( int k = 0; k < GTree[tn].union_borders.size(); k++ ){
+            ID = GTree[tn].union_borders[k];
+            //printf("DIJKSTRA...LEAF=%d BORDER=%d\n", tn, GTree[tn].union_borders[k] );
+//                result = dijkstra_candidate( GTree[tn].union_borders[k], cands, graph );//distance vector from s to all borders
+//            result = dijkstra_candidate_No( ID, cands, PartiGraph[tn] );//distance vector from s to all borders
+            result = dijkstra_candidate_No( ID, cands, Nodes );//distance vector from s to all borders
+            //printf("DIJKSTRA...END\n");
+
+            // save to map
+            for ( int p = 0; p < result.size(); ++p ){
+                if(result[p] != GTree[tn].mind[k*vNum + p]){
+                    if(Nodes[cands[p]].isborder){//if it is boundary vertex
+                        if(ID<cands[p]){
+                            affectedBPairs.insert({make_pair(ID,cands[p]), make_pair(GTree[tn].mind[k*vNum + p],result[p])});
+                        }else{
+                            affectedBPairs.insert({make_pair(cands[p],ID), make_pair(GTree[tn].mind[k*vNum + p],result[p])});
+                        }
+
+                    }
+                    GTree[tn].mind[k*vNum + p] = result[p];//update the distance matrix
+                }
+
+            }
+        }
+    }
+
+//    int bid1,bid2;
+//    for(int i=0;i<GTree[tn].borders.size();++i){
+//        bid1=GTree[tn].borders[i];
+//        for(int j=i+1;j<GTree[tn].borders.size();++j){
+//            bid2=GTree[tn].borders[j];
+//        }
+//    }
+}
+
+void Gstartree::boundaryVUpdate(pair<int,int> p, int tn, vector<int> & cands, map<pair<int,int>,pair<int,int>> & affectedBPairs){
+    int vNum = cands.size();
+    int ID;
+
+    for(int k=p.first;k<p.second;++k){
+        ID = GTree[tn].union_borders[k];
+//        vector<int> result = dijkstra_candidate_No( ID, cands, PartiGraph[tn] );//distance vector from s to all borders
+        vector<int> result = dijkstra_candidate_No( ID, cands, Nodes );//distance vector from s to all borders
+
+        // save to map
+        for ( int p = 0; p < result.size(); ++p ){
+            if(result[p] != GTree[tn].mind[k*vNum + p]){
+                if(Nodes[cands[p]].isborder){//if it is boundary vertex
+                    if(ID<cands[p]){
+                        affectedBPairs.insert({make_pair(ID,cands[p]), make_pair(GTree[tn].mind[k*vNum + p],result[p])});
+                    }else{
+                        affectedBPairs.insert({make_pair(cands[p],ID), make_pair(GTree[tn].mind[k*vNum + p],result[p])});
+                    }
+                }
+                GTree[tn].mind[k*vNum + p] = result[p];//update the distance matrix
+            }
+        }
+    }
+
+}
+
+
+void Gstartree::H2HdecBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch) {
+    map<int, int> checkedDis;
+
+    for (int i = 0; i < Tree.size(); i++) {
+        Tree[i].DisRe.clear();//record the star weight change (causing the distance change)
+    }
+
+//NodeOrderss.clear();
+    vector<set<int>> SCre; //SCre.clear();
+    set<int> ss; //ss.clear();
+    SCre.assign(node_num, ss);//{vertexID, set<int>}
+    set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
+
+    set<int> vertexIDChL; //vertexIDChL.clear();//record the vertex whose distanc labeling has changed
+
+    int a, b, oldW, newW, lid, hid;
+    for (int k = 0; k < wBatch.size(); k++) {
+        a = wBatch[k].first.first;
+        b = wBatch[k].first.second;
+        oldW = wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+        if (NodeOrder[a] < NodeOrder[b]) {
+            lid = a;
+            hid = b;
+        } else {
+            lid = b;
+            hid = a;
+        }
+
+        for (int i = 0; i < Nodes[a].adjnodes.size(); i++) {
+            if (Nodes[a].adjnodes[i] == b) {
+                Nodes[a].adjweight[i] = newW;
+                break;
+            }
+        }
+        for (int i = 0; i < Nodes[b].adjnodes.size(); i++) {
+            if (Nodes[b].adjnodes[i] == a) {
+                Nodes[b].adjweight[i] = newW;
+                break;
+            }
+        }
+
+        for (int i = 0; i < Tree[rank[lid]].vert.size(); i++) {
+            if (Tree[rank[lid]].vert[i].first == hid) {
+                if (Tree[rank[lid]].vert[i].second.first > newW) {
+                    Tree[rank[lid]].vert[i].second.first = newW;
+                    Tree[rank[lid]].vert[i].second.second = 1;
+                    SCre[lid].insert(hid);
+                    OC.insert(OrderCompMin(lid));
+                } else if (Tree[rank[lid]].vert[i].second.first == newW) {
+                    Tree[rank[lid]].vert[i].second.second += 1;
+                }
+                break;
+            }
+        }
+
+    }
+
+    vector<int> ProBeginVertexSet; //ProBeginVertexSet.clear();
+    vector<int> ProBeginVertexSetNew;
+    int ProBeginVertexID;
+    int ProID;
+//processing the stars
+    while (!OC.empty()) {
+        ProID = (*OC.begin()).x;
+        OC.erase(OC.begin());
+        vector<pair<int, pair<int, int>>> Vert = Tree[rank[ProID]].vert;
+        bool ProIDdisCha = false;//to see if the distance labeling of proID change or not
+        for (auto it = SCre[ProID].begin(); it != SCre[ProID].end(); it++) {
+            int Cid = *it;
+            int Cw;
+            int cidH = Tree[rank[Cid]].height - 1;
+
+            map<int, int> Hnei; //Hnei.clear();
+            vector<pair<int, int>> Lnei; //Lnei.clear();
+            for (int j = 0; j < Vert.size(); j++) {
+                if (NodeOrder[Vert[j].first] > NodeOrder[Cid]) {
+                    Hnei[Vert[j].first] = Vert[j].second.first;
+                } else if (NodeOrder[Vert[j].first] < NodeOrder[Cid]) {
+                    Lnei.push_back(make_pair(Vert[j].first, Vert[j].second.first));
+                } else {
+                    Cw = Vert[j].second.first;
+                }
+            }
+
+            if (Tree[rank[ProID]].dis[cidH] > Cw) {
+                Tree[rank[ProID]].dis[cidH] = Cw;
+                Tree[rank[ProID]].FN[cidH] = true;
+                ProIDdisCha = true;
+                Tree[rank[ProID]].DisRe.insert(Cid);
+            } else if (Tree[rank[ProID]].dis[cidH] == Cw) {
+                Tree[rank[ProID]].FN[cidH] = true;
+            }
+
+            int hid, hidHeight, lid, lidHeight, wsum;
+            for (int j = 0; j < Tree[rank[Cid]].vert.size(); j++) {
+                hid = Tree[rank[Cid]].vert[j].first;
+                hidHeight = Tree[rank[hid]].height - 1;
+                if (Hnei.find(hid) != Hnei.end()) {
+                    wsum = Cw + Hnei[hid];
+                    if (wsum < Tree[rank[Cid]].vert[j].second.first) {
+                        Tree[rank[Cid]].vert[j].second.first = wsum;
+                        Tree[rank[Cid]].vert[j].second.second = 1;
+                        SCre[Cid].insert(hid);
+                        OC.insert(OrderCompMin(Cid));
+                    } else if (wsum == Tree[rank[Cid]].vert[j].second.first) {
+                        Tree[rank[Cid]].vert[j].second.second += 1;
+                    }
+
+                }
+            }
+            for (int j = 0; j < Lnei.size(); j++) {
+                lid = Lnei[j].first;
+                lidHeight = Tree[rank[lid]].height - 1;
+                for (int k = 0; k < Tree[rank[lid]].vert.size(); k++) {
+                    if (Tree[rank[lid]].vert[k].first == Cid) {
+                        wsum = Cw + Lnei[j].second;
+                        if (Tree[rank[lid]].vert[k].second.first > wsum) {
+                            Tree[rank[lid]].vert[k].second.first = wsum;
+                            Tree[rank[lid]].vert[k].second.second = 1;
+                            SCre[lid].insert(Cid);
+                            OC.insert(OrderCompMin(lid));
+                        } else if (Tree[rank[lid]].vert[k].second.first == wsum) {
+                            Tree[rank[lid]].vert[k].second.second += 1;
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (ProIDdisCha) {//if the distance labeling is dectected changed
+            vertexIDChL.insert(ProID);
+            ProBeginVertexSetNew.clear();
+            ProBeginVertexSetNew.reserve(ProBeginVertexSet.size() + 1);
+            ProBeginVertexSetNew.push_back(ProID);
+            int rnew = rank[ProID], r;
+            for (int i = 0; i < ProBeginVertexSet.size(); i++) {
+                r = rank[ProBeginVertexSet[i]];
+                if (LCAQuery(rnew, r) != rnew) {
+                    ProBeginVertexSetNew.push_back(ProBeginVertexSet[i]);
+                }
+            }
+            ProBeginVertexSet = ProBeginVertexSetNew;
+        }
+    }
+
+//cout<<"Finish bottom-up refresh"<<endl;
+    for (int i = 0; i < ProBeginVertexSet.size(); i++) {
+        ProBeginVertexID = ProBeginVertexSet[i];
+        vector<int> linee; //linee.clear();
+        linee.reserve(heightMax);
+        int pachidd = Tree[Tree[rank[ProBeginVertexID]].pa].uniqueVertex;
+        while (Tree[rank[pachidd]].height > 1) {
+            linee.insert(linee.begin(), pachidd);
+            pachidd = Tree[Tree[rank[pachidd]].pa].uniqueVertex;
+        }
+        linee.insert(linee.begin(), pachidd);
+        EachNodeProBDis5(rank[ProBeginVertexID], linee, vertexIDChL, checkedDis);
+    }
+//return checkedDis.size();
+}
+
+void Gstartree::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, map<int,int>& checkedDis){
+    bool ProIDdisCha=false;
+
+    if(Tree[child].DisRe.size()!=0){
+        for(int k=0;k<Tree[child].vert.size();k++){
+            int b=Tree[child].vert[k].first, bH=Tree[rank[b]].height-1,vbW=Tree[child].vert[k].second.first;
+            if(Tree[child].FN[bH]){
+                if(Tree[child].DisRe.find(b)!=Tree[child].DisRe.end()){//all ancestor check
+                    for(int i=0;i<bH;i++){
+                        checkedDis.insert(make_pair(child,i));
+                        if(Tree[child].dis[i]>vbW+Tree[rank[b]].dis[i]){
+                            Tree[child].dis[i]=vbW+Tree[rank[b]].dis[i];
+                            Tree[child].FN[i]=false;
+                            ProIDdisCha=true;
+                        }
+                    }
+                    for(int i=bH+1;i<line.size();i++){
+                        checkedDis.insert(make_pair(child,i));
+                        if(Tree[child].dis[i]>vbW+Tree[rank[line[i]]].dis[bH]){
+                            Tree[child].dis[i]=vbW+Tree[rank[line[i]]].dis[bH];
+                            Tree[child].FN[i]=false;
+                            ProIDdisCha=true;
+                        }
+                    }
+
+                }else{//partial ancestor check
+
+                    if(vertexIDChL.find(b)!=vertexIDChL.end()){
+                        for(int i=0;i<bH;i++){
+                            checkedDis.insert(make_pair(child,i));
+                            if(Tree[child].dis[i]>vbW+Tree[rank[b]].dis[i]){
+                                Tree[child].dis[i]=vbW+Tree[rank[b]].dis[i];
+                                Tree[child].FN[i]=false;
+                                ProIDdisCha=true;
+                            }
+                        }
+                    }
+                    for(int i=bH+1;i<line.size();i++){
+                        checkedDis.insert(make_pair(child,i));
+                        if(Tree[child].dis[i]>vbW+Tree[rank[line[i]]].dis[bH]){
+                            Tree[child].dis[i]=vbW+Tree[rank[line[i]]].dis[bH];
+                            Tree[child].FN[i]=false;
+                            ProIDdisCha=true;
+                        }
+                    }
+
+                }
+            }
+        }
+    }else{
+        for(int k=0;k<Tree[child].vert.size();k++){
+            int b=Tree[child].vert[k].first, bH=Tree[rank[b]].height-1,vbW=Tree[child].vert[k].second.first;
+            if(Tree[child].FN[bH]){
+                if(vertexIDChL.find(b)!=vertexIDChL.end()){
+                    for(int i=0;i<bH;i++){
+                        checkedDis.insert(make_pair(child,i));
+                        if(Tree[child].dis[i]>vbW+Tree[rank[b]].dis[i]){
+                            Tree[child].dis[i]=vbW+Tree[rank[b]].dis[i];
+                            Tree[child].FN[i]=false;
+                            ProIDdisCha=true;
+                        }
+                    }
+                }
+                for(int i=bH+1;i<line.size();i++){
+                    checkedDis.insert(make_pair(child,i));
+                    if(Tree[child].dis[i]>vbW+Tree[rank[line[i]]].dis[bH]){
+                        Tree[child].dis[i]=vbW+Tree[rank[line[i]]].dis[bH];
+                        Tree[child].FN[i]=false;
+                        ProIDdisCha=true;
+                    }
+                }
+            }
+        }
+    }
+
+    if(ProIDdisCha){
+        vertexIDChL.insert(Tree[child].uniqueVertex);
+    }
+
+    line.push_back(Tree[child].uniqueVertex);
+    for(int i=0;i<Tree[child].ch.size();i++){
+        EachNodeProBDis5(Tree[child].ch[i], line, vertexIDChL,checkedDis);
+    }
+    line.pop_back();
+
+}
+
+void Gstartree::H2HincBatMT(vector<pair<pair<int,int>,pair<int,int>>>& wBatch) {
+    int checknum = 0;
+    map<pair<int, int>, int> OCdis;//{(s,t),d} (order[s]<order[t]) maintain the old distance before refreshed and avoid search in the adjacent list
+//OCdis.clear();
+
+//NodeOrderss.clear();
+    vector<set<int>> SCre; //SCre.clear();
+    set<int> ss; //ss.clear();
+    SCre.assign(node_num, ss);//{vertexID, set<int>}
+    set<OrderCompMin> OC;
+    OC.clear();//vertexID in decreasing node order
+
+    for (int k = 0; k < wBatch.size(); k++) {
+        int a = wBatch[k].first.first;
+        int b = wBatch[k].first.second;
+        int oldW = wBatch[k].second.first;
+        int newW = wBatch[k].second.second;
+
+        if (oldW < newW) {
+//            for (int i = 0; i < Nodes[a].adjnodes.size(); i++) {
+//                if (Nodes[a].adjnodes[i] == b) {
+//                    Nodes[a].adjweight[i] = newW;
+//                    break;
+//                }
+//            }
+//            for (int i = 0; i < Nodes[b].adjnodes.size(); i++) {
+//                if (Nodes[b].adjnodes[i] == a) {
+//                    Nodes[b].adjweight[i] = newW;
+//                    break;
+//                }
+//            }
+
+            int lid, hid;
+            if (NodeOrder[a] < NodeOrder[b]) {
+                lid = a; hid = b;
+            } else {
+                lid = b; hid = a;
+            }
+
+            for (int i = 0; i < Tree[rank[lid]].vert.size(); i++) {
+                if (Tree[rank[lid]].vert[i].first == hid) {
+                    if (Tree[rank[lid]].vert[i].second.first == oldW) {
+                        Tree[rank[lid]].vert[i].second.second -= 1;
+                        if (Tree[rank[lid]].vert[i].second.second < 1) {
+                            OCdis[make_pair(lid, hid)] = oldW;
+                            SCre[lid].insert(hid);
+                            OC.insert(OrderCompMin(lid));
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    vector<int> ProBeginVertexSet;
+    ProBeginVertexSet.clear();
+    vector<int> ProBeginVertexSetNew;
+    bool influence;
+    int ProID;
+    vector<int> line;
+    while (!OC.empty()) {
+        ProID = (*OC.begin()).x;
+        OC.erase(OC.begin());
+        vector<pair<int, pair<int, int>>> Vert = Tree[rank[ProID]].vert;
+        influence = false;
+
+//each ProID corresponds to a line
+        line.clear();
+        line.reserve(heightMax);
+        int pachid = ProID;
+        while (Tree[rank[pachid]].height > 1) {
+            line.insert(line.begin(), pachid);
+            pachid = Tree[Tree[rank[pachid]].pa].uniqueVertex;
+        }
+        line.insert(line.begin(), pachid);
+
+        for (auto it = SCre[ProID].begin(); it != SCre[ProID].end(); it++) {
+            int Cid = *it;
+            int Cw = OCdis[make_pair(ProID, Cid)];
+            int cidH = Tree[rank[Cid]].height - 1;
+
+            map<int, int> Hnei; //Hnei.clear();
+            vector<pair<int, int>> Lnei; //Lnei.clear();
+            for (int j = 0; j < Vert.size(); j++) {
+                if (NodeOrder[Vert[j].first] > NodeOrder[Cid]) {
+                    Hnei[Vert[j].first] = Vert[j].second.first;
+                } else if (NodeOrder[Vert[j].first] < NodeOrder[Cid]) {
+                    Lnei.push_back(make_pair(Vert[j].first, Vert[j].second.first));
+                }
+            }
+//check the affected shortcuts
+            int hid, lid;
+            for (int j = 0; j < Tree[rank[Cid]].vert.size(); j++) {
+                hid = Tree[rank[Cid]].vert[j].first;
+                if (Hnei.find(hid) != Hnei.end()) {
+                    if (Cw + Hnei[hid] == Tree[rank[Cid]].vert[j].second.first) {
+                        Tree[rank[Cid]].vert[j].second.second -= 1;
+                        if (Tree[rank[Cid]].vert[j].second.second < 1) {
+                            SCre[Cid].insert(hid);
+                            OC.insert(OrderCompMin(Cid));
+                            OCdis[make_pair(Cid, hid)] = Cw + Hnei[hid];
+                        }
+                    }
+                }
+            }
+            for (int j = 0; j < Lnei.size(); j++) {
+                lid = Lnei[j].first;
+                for (int k = 0; k < Tree[rank[lid]].vert.size(); k++) {
+                    if (Tree[rank[lid]].vert[k].first == Cid) {
+                        if (Tree[rank[lid]].vert[k].second.first == Cw + Lnei[j].second) {
+                            Tree[rank[lid]].vert[k].second.second -= 1;
+                            if (Tree[rank[lid]].vert[k].second.second < 1) {
+                                SCre[lid].insert(Cid);
+                                OC.insert(OrderCompMin(lid));
+                                OCdis[make_pair(lid, Cid)] = Cw + Lnei[j].second;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+
+
+//before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
+            if (Tree[rank[ProID]].FN[cidH]) {
+                influence = true;
+//higher than Cid
+                for (int i = 0; i < cidH; i++) {
+                    if (Tree[rank[ProID]].dis[i] == Cw + Tree[rank[Cid]].dis[i]) {
+                        Tree[rank[ProID]].cnt[i] -= 1;
+                    }
+                }
+
+//equal to Cid
+                Tree[rank[ProID]].FN[cidH] = false;
+                Tree[rank[ProID]].cnt[cidH] -= 1;
+
+//lower than Cid
+                for (int i = cidH + 1; i < Tree[rank[ProID]].dis.size(); i++) {
+                    if (Tree[rank[ProID]].dis[i] == Cw + Tree[rank[line[i]]].dis[cidH]) {
+                        Tree[rank[ProID]].cnt[i] -= 1;
+                    }
+                }
+            }
+
+//get the new value of shortcut
+//	cout<<Cw<<" increase to ";
+            Cw = INF;
+            int countwt = 0;
+
+            for (int i = 0; i < Nodes[ProID].adjnodes.size(); i++) {///Neighbor
+                if (Nodes[ProID].adjnodes[i] == Cid) {
+                    Cw = Nodes[ProID].adjweight[i];//the weight value in the original graph
+                    countwt = 1;
+                    break;
+                }
+            }
+
+            int ssw, wtt, wid;
+            vector<int> Wnodes;
+            Wnodes.clear();
+
+            if (ProID < Cid)
+                Wnodes = SCconNodesMT[ProID][Cid]; //cout<<"wid num "<<Wnodes.size()<<endl;
+            else
+                Wnodes = SCconNodesMT[Cid][ProID];
+            if (Wnodes.size() > 0) {
+                for (int i = 0; i < Wnodes.size(); i++) {
+                    wid = Wnodes[i];
+                    for (int j = 0; j < Tree[rank[wid]].vert.size(); j++) {
+                        if (Tree[rank[wid]].vert[j].first == ProID) {
+                            ssw = Tree[rank[wid]].vert[j].second.first;
+                        }
+                        if (Tree[rank[wid]].vert[j].first == Cid) {
+                            wtt = Tree[rank[wid]].vert[j].second.first;
+                        }
+                    }
+
+                    if (ssw + wtt < Cw) {
+                        Cw = ssw + wtt;
+                        countwt = 1;
+                    } else if (ssw + wtt == Cw) {
+                        countwt += 1;
+                    }
+                }
+            }
+
+//cout<<Cw<<endl;
+//refresh the shortcut to the new value
+            for (int i = 0; i < Tree[rank[ProID]].vert.size(); i++) {
+                if (Tree[rank[ProID]].vert[i].first == Cid) {
+                    Tree[rank[ProID]].vert[i].second.first = Cw;
+                    Tree[rank[ProID]].vert[i].second.second = countwt;
+                    break;
+                }
+            }
+        }
+
+        if (influence) {
+            ProBeginVertexSetNew.clear();
+            ProBeginVertexSetNew.reserve(ProBeginVertexSet.size() + 1);
+            ProBeginVertexSetNew.push_back(ProID);
+            int rnew = rank[ProID], r;
+            for (int i = 0; i < ProBeginVertexSet.size(); i++) {
+                r = rank[ProBeginVertexSet[i]];
+                if (LCAQuery(rnew, r) != rnew) {
+                    ProBeginVertexSetNew.push_back(ProBeginVertexSet[i]);
+                }
+            }
+            ProBeginVertexSet = ProBeginVertexSetNew;
+        }
+
+    }
+
+    int ProBeginVertexID;
+    for (int i = 0; i < ProBeginVertexSet.size(); i++) {
+        ProBeginVertexID = ProBeginVertexSet[i];
+        vector<int> linee; //linee.clear();
+        linee.reserve(heightMax);
+        int pachidd = Tree[Tree[rank[ProBeginVertexID]].pa].uniqueVertex;
+        while (Tree[rank[pachidd]].height > 1) {
+            linee.insert(linee.begin(), pachidd);
+            pachidd = Tree[Tree[rank[pachidd]].pa].uniqueVertex;
+        }
+        linee.insert(linee.begin(), pachidd);
+
+        eachNodeProcessIncrease1(rank[ProBeginVertexID], linee, checknum);
+    }
+//return checknum;
+}
+
+void Gstartree::eachNodeProcessIncrease1(int children, vector<int>& line, int& changelabel){
+    int childID=Tree[children].uniqueVertex;
+    int childH=Tree[children].height-1;
+    for(int i=0;i<Tree[children].dis.size();i++){
+        if(Tree[children].cnt[i]==0){
+            changelabel+=1;
+            //firstly, check which dis can be infected
+            int disBF=Tree[children].dis[i];
+            int PID;
+            //chidlID
+            for(int k=0;k<VidtoTNid[childID].size();k++){
+                PID=VidtoTNid[childID][k];
+                if(Tree[PID].FN[childH] && Tree[PID].dis[i]==disBF+Tree[PID].dis[childH]){
+                    Tree[PID].cnt[i]-=1;
+                }
+            }
+
+            //line[i]
+            for(int k=0;k<VidtoTNid[line[i]].size();k++){
+                PID=VidtoTNid[line[i]][k];
+                if(Tree[PID].height>Tree[children].height && Tree[PID].vAncestor[childH] == childID){
+                    if(Tree[PID].FN[i] && Tree[PID].dis[childH]==disBF+Tree[PID].dis[i]){
+                        Tree[PID].cnt[childH]-=1;
+                    }
+                }
+            }
+
+            //secondly, calculate the actual distance
+            int dis=INF; int count=0;
+            int Dvb; int b,bH; int DDvb=INF;
+            for(int j=0;j<Tree[children].vert.size();j++){
+                Dvb=Tree[children].vert[j].second.first;
+                b=Tree[children].vert[j].first;
+                bH=Tree[rank[b]].height-1;
+                if(bH<i){
+                    if(Dvb+Tree[rank[line[i]]].dis[bH]<dis){
+                        dis=Dvb+Tree[rank[line[i]]].dis[bH];
+                        count=1;
+                    }else if(Dvb+Tree[rank[line[i]]].dis[bH]==dis){
+                        count+=1;
+                    }
+                }else if(bH==i){
+                    DDvb=Dvb;
+                    if(Dvb<dis){
+                        dis=Dvb;
+                        count=1;
+                    }else if(Dvb==dis){
+                        count+=1;
+                    }
+                }else{
+                    if(Dvb+Tree[rank[b]].dis[i]<dis){
+                        dis=Dvb+Tree[rank[b]].dis[i];
+                        count=1;
+                    }else if(Dvb+Tree[rank[b]].dis[i]==dis){
+                        count+=1;
+                    }
+                }
+            }
+            if(DDvb==dis) Tree[children].FN[i]=true;
+            Tree[children].dis[i]=dis;
+            Tree[children].cnt[i]=count;
+        }
+    }
+
+    line.push_back(childID);
+    for(int i=0;i<Tree[children].ch.size();i++){
+        eachNodeProcessIncrease1(Tree[children].ch[i],line,changelabel);
+    }
+    line.pop_back();
+}
+
 #endif //GSTARTREE_HPP

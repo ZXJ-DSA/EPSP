@@ -69,7 +69,7 @@ void Gtree::load_graph(){
     FILE *fin;
     // load node
     printf("LOADING NODE...\t");
-    char filename[200];
+    char filename[300];
     if(dataset == "cal"){
         strcpy(filename, DataPath.c_str());
         strcat(filename, FILE_NODE.c_str());
@@ -260,8 +260,10 @@ void Gtree::init(){
 void Gtree::finalize(){
     delete xadj;
     delete adjncy;
+    delete vwgt;
     delete adjwgt;
     delete part;
+
 }
 
 // graph partition
@@ -348,7 +350,7 @@ void Gtree::build(){
             continue;
         }
 //        cout << "test 1." << endl;
-        /// graph partitioning by METIS
+        /// graph partitioning by METIS, the partition result is undetermined
 //		printf("PARTITIONING...NID=%d...SIZE=%d...", current.tnid, (int)current.nset.size() );
         presult = graph_partition( current.nset );
 //		printf("COMPLETE.\n");
@@ -422,58 +424,64 @@ void Gtree::build(){
 }
 
 // dump gtree index to file
-void Gtree::gtree_save(){
+void Gtree::gtree_save(string filename, string filename2){
     // FILE_GTREE
-    char filename[200];
-    if(dataset == "cal"){
-        strcpy(filename, DataPath.c_str());
-        strcat(filename, FILE_GTREE.c_str());
-    }else {
-        strcpy(filename, dirname.c_str());
-        strcat(filename, "/");
-        strcat(filename, FILE_GTREE.c_str());
-    }
-    FILE *fout = fopen( filename, "wb" );
+//    char filename[300];
+//    if(dataset == "cal"){
+//        strcpy(filename, DataPath.c_str());
+//        strcat(filename, FILE_GTREE.c_str());
+//    }else {
+//        strcpy(filename, dirname.c_str());
+//        strcat(filename, "/");
+//        strcat(filename, FILE_GTREE.c_str());
+//    }
+    FILE *fout = fopen( filename.c_str(), "wb" );
 //	FILE *fout = fopen( FILE_GTREE, "wb" );
     if(fout == NULL){
         cout<<"Failed to open file "<<filename<<endl;
         exit(1);
     }
-    int *buf = new int[ Nodes.size() ];
+    int *buf;
     for ( int i = 0; i < GTree.size(); i++ ){
         // borders
         int count_borders = GTree[i].borders.size();
         fwrite( &count_borders, sizeof(int), 1, fout );
+        buf = new int[count_borders];
         copy( GTree[i].borders.begin(), GTree[i].borders.end(), buf );
         fwrite( buf, sizeof(int), count_borders, fout );
+        delete[] buf;
         // children
         int count_children = GTree[i].children.size();
         fwrite( &count_children, sizeof(int), 1, fout );
+        buf = new int[count_children];
         copy( GTree[i].children.begin(), GTree[i].children.end(), buf );
         fwrite( buf, sizeof(int), count_children, fout );
+        delete[] buf;
         // isleaf
         fwrite( &GTree[i].isleaf, sizeof(bool), 1, fout );
         // leafnodes
         int count_leafnodes = GTree[i].leafnodes.size();
         fwrite( &count_leafnodes, sizeof(int), 1, fout );
+        buf = new int[count_leafnodes];
         copy( GTree[i].leafnodes.begin(), GTree[i].leafnodes.end(), buf );
         fwrite( buf, sizeof(int), count_leafnodes, fout );
+        delete[] buf;
         // father
         fwrite( &GTree[i].father, sizeof(int), 1, fout );
     }
     fclose(fout);
 
     // FILE_NODES_GTREE_PATH
-    char filename2[200];
-    if(dataset == "cal"){
-        strcpy(filename2, DataPath.c_str());
-        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
-    }else {
-        strcpy(filename2, dirname.c_str());
-        strcat(filename2, "/");
-        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
-    }
-    fout = fopen( filename2, "wb" );
+//    char filename2[300];
+//    if(dataset == "cal"){
+//        strcpy(filename2, DataPath.c_str());
+//        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
+//    }else {
+//        strcpy(filename2, dirname.c_str());
+//        strcat(filename2, "/");
+//        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
+//    }
+    fout = fopen( filename2.c_str(), "wb" );
 //    fout = fopen( (DataPath+FILE_NODES_GTREE_PATH).c_str(), "wb" );
     if(fout == NULL){
         cout<<"Failed to open file "<<filename2<<endl;
@@ -482,16 +490,18 @@ void Gtree::gtree_save(){
     for ( int i = 0; i < Nodes.size(); i++ ){
         int count = Nodes[i].gtreepath.size();
         fwrite( &count, sizeof(int), 1, fout );
+        buf = new int[count];
         copy( Nodes[i].gtreepath.begin(), Nodes[i].gtreepath.end(), buf );
         fwrite( buf, sizeof(int), count, fout );
+        delete[] buf;
     }
     fclose(fout);
-    delete[] buf;
+
 }
 
 void Gtree::gtree_save_txt(){
     // FILE_GTREE
-//    char filename[200];
+//    char filename[300];
 //    if(dataset == "cal"){
 //        strcpy(filename, DataPath.c_str());
 //        strcat(filename, FILE_GTREE.c_str());
@@ -582,7 +592,7 @@ void Gtree::gtree_save_txt(){
 // load gtree index from file
 /*void Gtree::gtree_load(){
     // FILE_GTREE
-    char filename[200];
+    char filename[300];
     if(dataset == "cal"){
         strcpy(filename, DataPath.c_str());
         strcat(filename, FILE_GTREE.c_str());
@@ -673,25 +683,25 @@ void Gtree::gtree_save_txt(){
 }*/
 
 // load gtree index from file
-void Gtree::load_gtreeQ() {
+void Gtree::load_gtree(string filename, string filename2) {
     // FILE_GTREE
-    char filename[200];
-    if(dataset == "cal"){
-        strcpy(filename, DataPath.c_str());
-        strcat(filename, FILE_GTREE.c_str());
-    }else {
-        strcpy(filename, dirname.c_str());
-        strcat(filename, "/");
-        strcat(filename, FILE_GTREE.c_str());
-    }
-    FILE *fin = fopen( filename, "rb" );
+//    char filename[300];
+//    if(dataset == "cal"){
+//        strcpy(filename, DataPath.c_str());
+//        strcat(filename, FILE_GTREE.c_str());
+//    }else {
+//        strcpy(filename, dirname.c_str());
+//        strcat(filename, "/");
+//        strcat(filename, FILE_GTREE.c_str());
+//    }
+    FILE *fin = fopen( filename.c_str(), "rb" );
 //    FILE *fin = fopen(FILE_GTREE, "rb");
     if(fin == NULL){
         cout << "Failed to open file " << filename << endl;
         exit(1);
     }
     cout << "Loading G-tree... ";
-    int *buf = new int[Nodes.size()];
+    int *buf;
     int count_borders, count_children, count_leafnodes;
     bool isleaf;
     int father;
@@ -705,28 +715,35 @@ void Gtree::load_gtreeQ() {
         TreeNode tn;
         // borders
         tn.borders.clear();
+        buf = new int[count_borders];
         fread(buf, sizeof(int), count_borders, fin);
         for (int i = 0; i < count_borders; i++) {
             tn.borders.push_back(buf[i]);
+            Nodes[buf[i]].isborder=true;
         }
+        delete[] buf;
         // children
         fread(&count_children, sizeof(int), 1, fin);
+        buf = new int[count_children];
         fread(buf, sizeof(int), count_children, fin);
         tn.children.clear();///
         for (int i = 0; i < count_children; i++) {
             tn.children.push_back(buf[i]);
         }
+        delete[] buf;
         // isleaf
         fread(&isleaf, sizeof(bool), 1, fin);
         tn.isleaf = isleaf;
         // leafnodes
         fread(&count_leafnodes, sizeof(int), 1, fin);
+        buf = new int[count_leafnodes];
         fread(buf, sizeof(int), count_leafnodes, fin);
         tn.leafnodes.clear();///
         for (int i = 0; i < count_leafnodes; i++) {
             tn.leafnodes.push_back(buf[i]);
             Nodes[buf[i]].inleafpos = i;
         }
+        delete[] buf;
         // father
         fread(&father, sizeof(int), 1, fin);
         tn.father = father;
@@ -735,24 +752,26 @@ void Gtree::load_gtreeQ() {
     }
     fclose(fin);
 
+
     // FILE_NODES_GTREE_PATH
     int count;
-    char filename2[200];
-    if(dataset == "cal"){
-        strcpy(filename2, DataPath.c_str());
-        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
-    }else {
-        strcpy(filename2, dirname.c_str());
-        strcat(filename2, "/");
-        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
-    }
-    fin = fopen( filename2, "rb" );
+//    char filename2[300];
+//    if(dataset == "cal"){
+//        strcpy(filename2, DataPath.c_str());
+//        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
+//    }else {
+//        strcpy(filename2, dirname.c_str());
+//        strcat(filename2, "/");
+//        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
+//    }
+    fin = fopen( filename2.c_str(), "rb" );
     if(fin == NULL){
         cout << "Failed to open file " << filename2 << endl;
         exit(1);
     }
     int pos = 0;
     while (fread(&count, sizeof(int), 1, fin)) {
+        buf = new int[count];
         fread(buf, sizeof(int), count, fin);
         // clear gtreepath
         Nodes[pos].gtreepath.clear();
@@ -763,9 +782,9 @@ void Gtree::load_gtreeQ() {
         Nodes[pos].inleaf = buf[count - 1];
         // pos increase
         pos++;
+        delete[] buf;
     }
     fclose(fin);
-    delete[] buf;
     cout << "Done."<<endl;
 }
 
@@ -952,6 +971,7 @@ vector<int> Gtree::dijkstra_candidate( int s, vector<int> &cands, vector<Node> &
     unordered_set<int> closed; //flag vector of whether closed
     closed.clear();
     vector<Distance> cost(node_num, INF);   //vector of cost
+//    unordered_map<int,int> cost;   //map for cost
     int temp_dis;
     q.push(make_pair(0,s));
     cost[s] = 0;
@@ -992,6 +1012,9 @@ vector<int> Gtree::dijkstra_candidate( int s, vector<int> &cands, vector<Node> &
         // expand on graph (the original graph)
         for ( int i = 0; i < graph[minpos].adjnodes.size(); i++ ){
             adjnode = graph[minpos].adjnodes[i];
+//            if(cost.find(adjnode)==cost.end()){
+//                cost.insert({adjnode,INF});
+//            }
             if ( closed.find( adjnode ) != closed.end() ){//if found, ie, it is visited
                 continue;
             }
@@ -1562,17 +1585,17 @@ void Gtree::hierarchy_shortest_path_compute(int i, vector<int> & tn_v, vector<No
 }
 
 // dump distance matrix into file
-void Gtree::hierarchy_shortest_path_save(){
-    char filename[200];
-    if(dataset == "cal"){
-        strcpy(filename, DataPath.c_str());
-        strcat(filename, FILE_ONTREE_MIND.c_str());
-    }else {
-        strcpy(filename, dirname.c_str());
-        strcat(filename, "/");
-        strcat(filename, FILE_ONTREE_MIND.c_str());
-    }
-    FILE* fout = fopen( filename, "wb" );
+void Gtree::hierarchy_shortest_path_save(string filename){
+//    char filename[300];
+//    if(dataset == "cal"){
+//        strcpy(filename, DataPath.c_str());
+//        strcat(filename, FILE_ONTREE_MIND.c_str());
+//    }else {
+//        strcpy(filename, dirname.c_str());
+//        strcat(filename, "/");
+//        strcat(filename, FILE_ONTREE_MIND.c_str());
+//    }
+    FILE* fout = fopen( filename.c_str(), "wb" );
     if(fout == NULL){
         cout<<"Failed to open file "<<filename<<endl;
         exit(1);
@@ -1598,18 +1621,19 @@ void Gtree::hierarchy_shortest_path_save(){
     fclose(fout);
 }
 
+
 // load distance matrix from file
-void Gtree::load_minds(){
-    char filename[200];
-    if(dataset == "cal"){
-        strcpy(filename, DataPath.c_str());
-        strcat(filename, FILE_ONTREE_MIND.c_str());
-    }else {
-        strcpy(filename, dirname.c_str());
-        strcat(filename, "/");
-        strcat(filename, FILE_ONTREE_MIND.c_str());
-    }
-    FILE* fin = fopen( filename, "rb" );
+void Gtree::load_minds(string filename){
+//    char filename[300];
+//    if(dataset == "cal"){
+//        strcpy(filename, DataPath.c_str());
+//        strcat(filename, FILE_ONTREE_MIND.c_str());
+//    }else {
+//        strcpy(filename, dirname.c_str());
+//        strcat(filename, "/");
+//        strcat(filename, FILE_ONTREE_MIND.c_str());
+//    }
+    FILE* fin = fopen( filename.c_str(), "rb" );
 //	FILE* fin = fopen( FILE_ONTREE_MIND, "rb" );
     if(fin == NULL){
         cout << "Failed to open file " << filename << endl;
@@ -1635,27 +1659,45 @@ void Gtree::load_minds(){
         for ( int i = 0; i < count; i++ ){
             GTree[pos].mind.push_back(buf[i]);
         }
-//        if(pos==5061){
-//            int i=0;
-//            int span = GTree[pos].leafnodes.size();
-//            for(auto it=GTree[pos].mind.begin();it!=GTree[pos].mind.end();++it){
-//                if(i%span==0)
-//                    cout<<endl;
-//                cout<<*it<<" ";
-//                ++i;
-//            }
-//            cout<<endl;
-//            cout<<GTree[pos].isleaf<<endl;
-//            cout<<GTree[pos].mind.size()<<endl;
-//            int leafposID1=4,leafposID2=0;
-//            cout<<GTree[pos].mind[leafposID2*span + leafposID1]<<" "<<GTree[pos].mind[leafposID1*span + leafposID2]<<" (old); "<<endl;
-//        }
+
         pos++;
         delete[] buf;
     }
     fclose(fin);
+
+//    // FILE_NODES_GTREE_PATH
+//    char filename2[300];
+//    if(dataset == "cal"){
+//        strcpy(filename2, DataPath.c_str());
+//        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
+//    }else {
+//        strcpy(filename2, dirname.c_str());
+//        strcat(filename2, "/");
+//        strcat(filename2, FILE_NODES_GTREE_PATH.c_str());
+//    }
+//    fin = fopen( filename2, "rb" );
+//    if(fin == NULL){
+//        cout << "Failed to open file " << filename2 << endl;
+//        exit(1);
+//    }
+//    while (fread(&count, sizeof(int), 1, fin)) {
+//        fread(buf, sizeof(int), count, fin);
+//        // clear gtreepath
+//        Nodes[pos].gtreepath.clear();
+//        for (int i = 0; i < count; i++) {
+//            Nodes[pos].gtreepath.push_back(buf[i]);
+//        }
+//        Nodes[pos].deep = count;
+//        Nodes[pos].inleaf = buf[count - 1];
+//        // pos increase
+//        pos++;
+//    }
+//    fclose(fin);
+//    delete[] buf;
     cout << "Done." << endl;
 }
+
+
 
 //build G-Tree
 int Gtree::gtree_build(bool ifParallel){
@@ -1668,12 +1710,10 @@ int Gtree::gtree_build(bool ifParallel){
 
     // gtree_build
     Timer tt;
-    tt.start();
+
     cout << "Start to build G-tree..."<<endl;
-//    TIME_TICK_START
+    tt.start();
     build();
-//    TIME_TICK_END
-//    TIME_TICK_PRINT("BUILD")
 //    cout <<"Done."<<endl;
     tt.stop();
     t1 = tt.GetRuntime();
@@ -1681,25 +1721,24 @@ int Gtree::gtree_build(bool ifParallel){
 
     // dump gtree
 //    cout << "Saving G-tree..."<<endl;
-    gtree_save();
+    gtree_save(dirname+"/"+FILE_GTREE,dirname+"/"+FILE_NODES_GTREE_PATH);
 //    gtree_save_txt();
 //    cout <<"Done."<<endl;
 //    exit(0);
     // calculate distance matrix
     cout << "Start to calculate distance matrix..."<<endl;
-//    tt.start();
-//    TIME_TICK_START
+    tt.start();
     hierarchy_shortest_path_calculation(ifParallel);
 //    TIME_TICK_END
 //    TIME_TICK_PRINT("MIND")
 //    cout << "Done."<<endl;
     tt.stop();
     t2 = tt.GetRuntime();
-    cout << "The time for distance matrix computing: " << t2-t1 << " s." << endl;
-    cout << "Overall time for index construction: " << t2 << " s." << endl;
+    cout << "The time for distance matrix computing: " << t2 << " s." << endl;
+    cout << "Overall time for index construction: " << t1+t2 << " s." << endl;
     // dump distance matrix
 //    cout << "Saving distance matrix..."<<endl;
-    hierarchy_shortest_path_save();
+    hierarchy_shortest_path_save(dirname+"/"+FILE_ONTREE_MIND);
 //    cout << "Done."<<endl;
 
     return 0;
@@ -1885,8 +1924,8 @@ void Gtree::init_update() {
     }else{
         ReadGraph_W();
     }
-    load_gtreeQ();
-    load_minds();
+    load_gtree(dirname+"/"+FILE_GTREE, dirname+"/"+FILE_NODES_GTREE_PATH);
+    load_minds(dirname+"/"+FILE_ONTREE_MIND);
     build_up_and_down_pos();//
     init_borders();//set border flag
 }
