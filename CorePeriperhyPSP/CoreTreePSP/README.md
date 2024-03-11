@@ -4,7 +4,7 @@ This is the source code of Core-tree PSP indexes. Please refer to the paper for 
 ## Algorithms
 After `cmake -DCMAKE_BUILD_TYPE=Release ./` and `make -j`, please run `./DCT` to obtain the usage instruction.
 
-**For the planar PSP index**,
+**For the core-tree PSP index**,
 
 1. arg 4 specifies the shortest path index for the tree index: 0 for CH, 1 for TD.
 1. arg 8 specifies the PSP strategy: 1 for pre-boundary, 2 for no-boundary; 3 for post-boundary.
