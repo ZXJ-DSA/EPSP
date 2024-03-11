@@ -283,7 +283,7 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
         else if(indexType==tgtreeIndex){
             init_TGTreeIndex();
         }
-//    CorrectnessCheck(100);
+        CorrectnessCheck(100);
     }
 
     // read updates
@@ -303,7 +303,7 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
     }
 
     bool ifDebug= false;
-    ifDebug=true;
+//    ifDebug=true;
 
     double ave_time = 0;
 
@@ -1860,17 +1860,21 @@ int Gstartree::Query_TGTree(int ID1, int ID2) {
             d=dijkstra_p2p_leafNode(ID1, ID2);
             int dis1,dis2;
             int bid1,bid2;
-            int borderSize=GTree[Ns].borders.size();
+            int leafSize1=GTree[Ns].leafnodes.size();
+            int leafSize2=GTree[Nt].leafnodes.size();
             int posa = Nodes[ID1].inleafpos;//the position in leaf node
             int posb = Nodes[ID2].inleafpos;//the position in leaf node
+            int disbb=INF;
             for(int i=0;i<GTree[Ns].borders.size();++i){
                 bid1=GTree[Ns].borders[i];
-                dis1=GTree[Ns].mind[i*borderSize+posa];
-                for(int j=0;j<GTree[Ns].borders.size();++j){
-                    bid2=GTree[Ns].borders[j];
-                    dis2=GTree[Ns].mind[j*borderSize+posb];
-                    if(d>dis1+dis2){
-                        d=dis1+dis2;
+                dis1=GTree[Ns].mind[i*leafSize1+posa];
+                for(int j=0;j<GTree[Nt].borders.size();++j){
+                    bid2=GTree[Nt].borders[j];
+                    dis2=GTree[Nt].mind[j*leafSize2+posb];
+                    int posb2=Nodes[bid2].inleafpos;
+                    disbb=GTree[Nt].mind[i*leafSize1+posb2];
+                    if(d>dis1+dis2+disbb){
+                        d=dis1+dis2+disbb;
                     }
                 }
             }
@@ -2120,6 +2124,7 @@ void Gstartree::CorrectnessCheck(int times){
     for(int i=0;i<times;i++){//times
         s=rand()%node_num;
         t=rand()%node_num;
+//        s=235330, t=233696;
 //        s=146478; t=1323;//b-p
 //        s=1314; t=146478;//b-b
 //        s=138682; t=146478;//b-b
@@ -2179,17 +2184,21 @@ inline int Gstartree::dist_query(int src, int dst) {
         dis=dijkstra_p2p_leafNode(src, dst);
         int dis1,dis2;
         int bid1,bid2;
-        int borderSize=GTree[Ns].borders.size();
+        int leafSize1=GTree[Ns].leafnodes.size();
+        int leafSize2=GTree[Nt].leafnodes.size();
         int posa = Nodes[src].inleafpos;//the position in leaf node
         int posb = Nodes[dst].inleafpos;//the position in leaf node
+        int disbb=INF;
         for(int i=0;i<GTree[Ns].borders.size();++i){
             bid1=GTree[Ns].borders[i];
-            dis1=GTree[Ns].mind[i*borderSize+posa];
-            for(int j=0;j<GTree[Ns].borders.size();++j){
-                bid2=GTree[Ns].borders[j];
-                dis2=GTree[Ns].mind[j*borderSize+posb];
-                if(dis>dis1+dis2){
-                    dis=dis1+dis2;
+            dis1=GTree[Ns].mind[i*leafSize1+posa];
+            for(int j=0;j<GTree[Nt].borders.size();++j){
+                bid2=GTree[Nt].borders[j];
+                dis2=GTree[Nt].mind[j*leafSize2+posb];
+                int posb2=Nodes[bid2].inleafpos;
+                disbb=GTree[Nt].mind[i*leafSize1+posb2];
+                if(dis>dis1+dis2+disbb){
+                    dis=dis1+dis2+disbb;
                 }
             }
         }
