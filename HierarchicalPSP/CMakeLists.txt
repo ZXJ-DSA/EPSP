@@ -32,19 +32,19 @@ endif()
 
 add_definitions(-w) # omit warning information
 
-add_executable(Hier_DS main.cpp gtree.hpp gstartree.hpp)
+add_executable(HPSP main.cpp gtree.hpp gstartree.hpp)
 #add_executable(Gtree gtree_build.cpp)
 
 # link libraries
-target_link_libraries(Hier_DS metis.a GKlib.a)
+target_link_libraries(HPSP metis.a GKlib.a)
 #target_link_libraries(Gtree metis.a GKlib.a)
 
 
 if (Boost_FOUND)
     if(UNIX AND NOT APPLE)
-        target_link_libraries(Hier_DS pthread boost_system boost_thread)# For linux
+        target_link_libraries(HPSP pthread boost_system boost_thread)# For linux
     endif()
     if(APPLE)
-        target_link_libraries(Hier_DS boost_system boost_thread-mt)# For mac
+        target_link_libraries(HPSP boost_system boost_thread-mt)# For mac
     endif()
 endif ()
