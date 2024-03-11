@@ -303,7 +303,7 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
     }
 
     bool ifDebug= false;
-//    ifDebug=true;
+    ifDebug=true;
 
     double ave_time = 0;
 
@@ -316,7 +316,7 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
         case DECREASE:{
             cout<<"\nUpdate type: Decrease"<<endl;
             ave_time = 0;
-            auto GTreeTemp=GTree; auto NodesTemp=Nodes; auto TreeTemp=Tree; auto SCconNodesMTTemp=SCconNodesMT;
+            auto GTreeTemp=GTree; auto NodesTemp=Nodes; auto TreeTemp=Tree; auto SCconNodesMTTemp=SCconNodesMT; auto OverlayGraphTemp=OverlayGraph;
             for(int batch_i=0;batch_i<updateBatch;++batch_i){
                 cout<<"Batch "<<batch_i<<" :";
                 updates.clear();
@@ -355,7 +355,7 @@ void Gstartree::IndexMaintenance( int updateType, int updateBatch,int updateVolu
             }
             cout<<"The average time used for updating: "<< ave_time/updateBatch <<" s."<<endl;
 //            break;
-            GTree=GTreeTemp; Nodes=NodesTemp; Tree=TreeTemp; SCconNodesMT=SCconNodesMTTemp;
+            GTree=GTreeTemp; Nodes=NodesTemp; Tree=TreeTemp; SCconNodesMT=SCconNodesMTTemp; OverlayGraph=OverlayGraphTemp;
         }
         case INCREASE:{
             cout<<"\nUpdate type: Increase"<<endl;
@@ -2605,9 +2605,6 @@ void Gstartree::hierarchy_shortest_path_calculation_NoBoundary(bool ifParallel){
     vector<int> tnodes, tweight;
     set<int> nset;
 
-
-
-
     int partiNum = leafNodes.size();
 
     if(ifParallel){/// multi-thread
@@ -2973,7 +2970,6 @@ void Gstartree::MDEContract(){
     while(!Deg.empty()){
         count+=1;
         int x=(*Deg.begin()).x;//minimum degree first
-
         while(change[x]){//update the degree if it is changed
             Deg.erase(DegComp1(x));
 //            Deg.erase(Deg.begin());
@@ -3190,7 +3186,7 @@ void Gstartree::makeTree(){
 //        }
         x=vNodeOrder[len];
         assert(x>=0 && x<node_num);
-        if(!Nodes[x].isborder){
+        if(!Nodes[x].isborder){//if not boundary vertex
             break;
         }
         if(treeWidth<NeighborCon[x].size()){
@@ -3327,7 +3323,6 @@ void Gstartree::makeIndexDFS(int p, vector<int>& list){
         }
     }
     Tree[p].pos[NeiNum]=list.size();
-
 
     //dis
     for(int i=0;i<NeiNum;i++){
@@ -3612,7 +3607,6 @@ void Gstartree::IndexSize() {
 
 //// Index maintenance
 void Gstartree::TGTreeIndexUpdate(vector<pair<pair<int,int>,pair<int,int> > > & updates, bool ifParallel, int updateType){//update(<ID1,ID2>,oldW) vector<pair<pair<int,int>,int> > & updates,
-
 //    double ave_time = 0;
     int ID1,ID2,oldW,newW;
     vector<pair<pair<int,int>,pair<int,int> > > uWithinLeafNode;// edge update within the same leaf node (<ID1,ID2>,<oldW,newW>)
@@ -3670,7 +3664,8 @@ void Gstartree::TGTreeIndexUpdate(vector<pair<pair<int,int>,pair<int,int> > > & 
             assert(Nodes[ID1].inleaf == Nodes[ID2].inleaf);
             int PID = Nodes[ID1].inleaf;
 
-            PartitionUpdate_No(PID,affectedBPairs,false);
+//            PartitionUpdate_No(PID,affectedBPairs,false);
+            PartitionUpdate_No(PID,affectedBPairs,true);
             //update overlay graph index
             if(!affectedBPairs.empty()){
 //                cout<<" affectedBPairs size: "<<affectedBPairs.size()<<endl;
@@ -3705,11 +3700,24 @@ void Gstartree::TGTreeIndexUpdate(vector<pair<pair<int,int>,pair<int,int> > > & 
                             cout<<"Not found edge e("<<ID1<<","<<ID2<<") in overlay graph!"<<endl; exit(1);
                         }
                         if(updateType==DECREASE){
-                            if(olddis>newdis){
+                            if(newdis<olddis){
+                                for(int i=0;i<Nodes[ID1].adjnodes.size();++i){
+                                    if(Nodes[ID1].adjnodes[i]==ID2){
+                                        cout<<"Exist original edge. "<<ID1<<" "<<ID2<<" "<<Nodes[ID1].adjweight[i]<<" "<<olddis<<" "<<newdis<<endl;
+                                    }
+                                }
                                 testData.emplace_back(make_pair(ID1,ID2), make_pair(olddis,newdis));
+                            }else if(newdis>olddis){
+                                cout<<"Something wrong happens. "<<ID1<<"("<<Nodes[ID1].isborder<<") "<<ID2<<"("<<Nodes[ID2].isborder<<") : "<<newdis<<" "<<olddis<< endl;
+                                exit(1);
                             }
                         }else if(updateType==INCREASE){
                             if(newdis>olddis){
+                                for(int i=0;i<Nodes[ID1].adjnodes.size();++i){
+                                    if(Nodes[ID1].adjnodes[i]==ID2){
+                                        cout<<"Exist original edge. "<<ID1<<" "<<ID2<<" "<<Nodes[ID1].adjweight[i]<<" "<<olddis<<" "<<newdis<<endl;
+                                    }
+                                }
                                 testData.emplace_back(make_pair(ID1,ID2), make_pair(olddis,newdis));
                             }else if(newdis<olddis){
                                 cout<<"Something wrong happens. "<<ID1<<"("<<Nodes[ID1].isborder<<") "<<ID2<<"("<<Nodes[ID2].isborder<<") : "<<newdis<<" "<<olddis<< endl;
@@ -3763,7 +3771,6 @@ void Gstartree::PartitionUpdate_No(int tn, map<pair<int,int>,pair<int,int>> & af
     int bNum = GTree[tn].borders.size();
 
     if(ifParallel){/// multi-thread
-
         if(bNum>thread_num){
             int step=bNum/thread_num;
             boost::thread_group threadf;
@@ -3838,9 +3845,10 @@ void Gstartree::boundaryVUpdate(pair<int,int> p, int tn, vector<int> & cands, ma
                 if(Nodes[cands[p]].isborder){//if it is boundary vertex
                     if(ID<cands[p]){
                         affectedBPairs.insert({make_pair(ID,cands[p]), make_pair(GTree[tn].mind[k*vNum + p],result[p])});
-                    }else{
-                        affectedBPairs.insert({make_pair(cands[p],ID), make_pair(GTree[tn].mind[k*vNum + p],result[p])});
                     }
+//                    else{
+//                        affectedBPairs.insert({make_pair(cands[p],ID), make_pair(GTree[tn].mind[k*vNum + p],result[p])});
+//                    }
                 }
                 GTree[tn].mind[k*vNum + p] = result[p];//update the distance matrix
             }
@@ -3879,18 +3887,17 @@ void Gstartree::H2HdecBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch) {
             hid = a;
         }
 
-        for (int i = 0; i < Nodes[a].adjnodes.size(); i++) {
-            if (Nodes[a].adjnodes[i] == b) {
-                Nodes[a].adjweight[i] = newW;
-                break;
-            }
+        if(OverlayGraph[a].find(b)!=OverlayGraph[a].end()){
+            OverlayGraph[a][b]=newW;
+        }else{
+            cout<<"Wrong for Neighbors!"<<endl; exit(1);
         }
-        for (int i = 0; i < Nodes[b].adjnodes.size(); i++) {
-            if (Nodes[b].adjnodes[i] == a) {
-                Nodes[b].adjweight[i] = newW;
-                break;
-            }
+        if(OverlayGraph[b].find(a)!=OverlayGraph[b].end()){
+            OverlayGraph[b][a]=newW;
+        }else{
+            cout<<"Wrong for Neighbors!"<<endl; exit(1);
         }
+
 
         for (int i = 0; i < Tree[rank[lid]].vert.size(); i++) {
             if (Tree[rank[lid]].vert[i].first == hid) {
@@ -4120,18 +4127,22 @@ void Gstartree::H2HincBatMT(vector<pair<pair<int,int>,pair<int,int>>>& wBatch) {
         int newW = wBatch[k].second.second;
 
         if (oldW < newW) {
-//            for (int i = 0; i < Nodes[a].adjnodes.size(); i++) {
-//                if (Nodes[a].adjnodes[i] == b) {
-//                    Nodes[a].adjweight[i] = newW;
-//                    break;
-//                }
-//            }
-//            for (int i = 0; i < Nodes[b].adjnodes.size(); i++) {
-//                if (Nodes[b].adjnodes[i] == a) {
-//                    Nodes[b].adjweight[i] = newW;
-//                    break;
-//                }
-//            }
+            if(OverlayGraph[a].find(b)!=OverlayGraph[a].end()){
+                if(OverlayGraph[a][b]!=oldW){//only works for no-boundary
+                    cout<<"Inconsistent! "<<OverlayGraph[a][b]<<" "<<oldW<<endl; exit(1);
+                }
+                OverlayGraph[a][b]=newW;
+            }else{
+                cout<<"Wrong for Neighbors!"<<endl; exit(1);
+            }
+            if(OverlayGraph[b].find(a)!=OverlayGraph[b].end()){
+                if(OverlayGraph[b][a]!=oldW){
+                    cout<<"Inconsistent! "<<OverlayGraph[b][a]<<" "<<oldW<<endl; exit(1);
+                }
+                OverlayGraph[b][a]=newW;
+            }else{
+                cout<<"Wrong for Neighbors!"<<endl; exit(1);
+            }
 
             int lid, hid;
             if (NodeOrder[a] < NodeOrder[b]) {
@@ -4144,6 +4155,7 @@ void Gstartree::H2HincBatMT(vector<pair<pair<int,int>,pair<int,int>>>& wBatch) {
                 if (Tree[rank[lid]].vert[i].first == hid) {
                     if (Tree[rank[lid]].vert[i].second.first == oldW) {
                         Tree[rank[lid]].vert[i].second.second -= 1;
+//                        cout<<lid<<" "<<hid<<" "<<Tree[rank[lid]].vert[i].second.first<<" "<<Tree[rank[lid]].vert[i].second.second<<endl;
                         if (Tree[rank[lid]].vert[i].second.second < 1) {
                             OCdis[make_pair(lid, hid)] = oldW;
                             SCre[lid].insert(hid);
@@ -4153,6 +4165,8 @@ void Gstartree::H2HincBatMT(vector<pair<pair<int,int>,pair<int,int>>>& wBatch) {
                     break;
                 }
             }
+        }else{
+            cout<<"Wrong for this edge update. "<<a<<" "<<b<<" "<<oldW<<" "<<newW<<endl; exit(1);
         }
     }
 
@@ -4252,9 +4266,17 @@ void Gstartree::H2HincBatMT(vector<pair<pair<int,int>,pair<int,int>>>& wBatch) {
             Cw = INF;
             int countwt = 0;
 
-            for (int i = 0; i < Nodes[ProID].adjnodes.size(); i++) {///Neighbor
-                if (Nodes[ProID].adjnodes[i] == Cid) {
-                    Cw = Nodes[ProID].adjweight[i];//the weight value in the original graph
+//            for (int i = 0; i < Nodes[ProID].adjnodes.size(); i++) {///Neighbor
+//                if (Nodes[ProID].adjnodes[i] == Cid) {
+//                    Cw = Nodes[ProID].adjweight[i];//the weight value in the original graph
+//                    countwt = 1;
+//                    break;
+//                }
+//            }
+
+            for (auto it = OverlayGraph[ProID].begin(); it != OverlayGraph[ProID].end(); ++it) {///Neighbor of overlay graph
+                if (it->first == Cid) {
+                    Cw = it->second;//the weight value in the original graph
                     countwt = 1;
                     break;
                 }
