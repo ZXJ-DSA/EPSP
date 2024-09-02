@@ -1802,7 +1802,8 @@ pair<int,int> Graph::DisQueryPeak2(int ID1, int ID2,vector<unordered_map<vertex,
     for(auto it=Label[ID1].begin();it!=Label[ID1].end();it++){
         hub=(*it).first;
         dis1=(*it).second;
-        if(hub!=ID2 && Label[ID2].find(hub)!=Label[ID2].end()){//hub is the hub of ID1 and ID2 and hub != ID2
+        if(NodeOrder[hub]>NodeOrder[ID2] && Label[ID2].find(hub)!=Label[ID2].end()){//hub is the hub of ID1 and ID2 and hub != ID2
+//        if(hub!=ID2 && Label[ID2].find(hub)!=Label[ID2].end()){//hub is the hub of ID1 and ID2 and hub != ID2
             if(dis1+Label[ID2][hub]<d){
                 d=dis1+Label[ID2][hub];
                 finalHub = hub;

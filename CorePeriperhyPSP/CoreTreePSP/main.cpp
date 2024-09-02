@@ -8,7 +8,7 @@
 
 int main(int argc, char** argv){
 
-    if( argc < 4 || argc > 10){//
+    if( argc < 4 || argc > 11){//
         printf("usage:\n<arg1> source path, e.g. /export/project/xzhouby\n");
         printf("<arg2> name of dataset, e.g. NY\n");
         printf("<arg3> tree width, e.g. 20\n");
@@ -17,7 +17,8 @@ int main(int argc, char** argv){
         printf("<arg6> (optional) update number, eg. 1000\n");
         printf("<arg7> (optional) thread number, eg. 15\n");
         printf("<arg8> (optional) PSP strategy, (1: Pre-boundary; 2: No-boundary; 3: Post-boundary), default: 2\n");
-        printf("<arg9> (optional) preprocessing task, (1: Same-tree query generation), default: 1\n");
+        printf("<arg9> (optional) Percentage of scalability test , eg: 20\n");
+        printf("<arg10> (optional) preprocessing task, (1: Same-tree query generation), default: 1\n");
         exit(0);
     }
 
@@ -37,6 +38,7 @@ int main(int argc, char** argv){
     int batchSize = 15;
     int strategy = 2;//PSP strategy
     int preTask = 0;
+    int percent =0;
 
     if(argc > 1) {
         cout << "argc: " << argc << endl;
@@ -72,11 +74,16 @@ int main(int argc, char** argv){
         }
         if(argc > 9){
             cout << "argv[9]: " << argv[9] << endl;//Preprocessing task
-            preTask = stoi(argv[9]);
+            percent = stoi(argv[9]);
+        }
+        if(argc > 10){
+            cout << "argv[10]: " << argv[10] << endl;//Preprocessing task
+            preTask = stoi(argv[10]);
             if(preTask!=1){
                 cout<<"Wrong preprocessing task!"<<preTask<<endl; exit(1);
             }
         }
+
     }
 
 
@@ -87,9 +94,12 @@ int main(int argc, char** argv){
     string sourcePath=DesFile+"/"+dataset+"/";
 //    string orderfile=graphfile+".order";
     string ODfile=sourcePath+dataset+".query";
-
-
     string updateFile=sourcePath+dataset+".update";
+
+    if(percent!=0){
+        ODfile=sourcePath+dataset+"_"+ to_string(percent)+".query";
+        updateFile=sourcePath+dataset+"_"+ to_string(percent)+".update";
+    }
 
     Graph g;
     g.threadnum=threadNum;//thread number of parallel computation (can be changed)
@@ -132,12 +142,21 @@ int main(int argc, char** argv){
 //    g.CoreGraphDebug(graphfile+"CorePLL_148");//NY, original
 
     g.sourcePath=sourcePath;
+    if(percent==0){
+        g.ReadGraph(sourcePath+dataset);//
+    }else{
+        g.ReadGraph(sourcePath+dataset+"_"+ to_string(percent));//
+    }
+//
 
-    g.ReadGraph(sourcePath+dataset);//
 //    g.StainingMethod(0);
 
     if(preTask==1){
-        g.QueryGenerationSameParti();//same-partition query generation
+        string filename=sourcePath+"tmp/"+dataset+"_sameParti_CT"+ to_string(g.bandWidth)+".query";
+        if(percent!=0){
+            filename=sourcePath+"tmp/"+dataset+"_"+ to_string(percent)+"_sameParti_CT"+ to_string(g.bandWidth)+".query";
+        }
+        g.QueryGenerationSameParti(filename);//same-partition query generation
     }
 
     ///Task 1: Index construction
@@ -149,17 +168,13 @@ int main(int argc, char** argv){
     ///Task 2: Query processing
     g.CorrectnessCheck(100);
     g.EffiCheck(ODfile,runtimes);//query efficiency test
-    g.EffiCheck(sourcePath+"tmp/"+dataset+"_sameParti_CT"+ to_string(treeWidth)+".query",runtimes);//query efficiency test
-//    exit(0);
-//#ifdef __APPLE__
-////    cout<<"The platform is macOS."<<endl;
-//    g.EffiCheck(ODfile+"SamePartiPlanar",runtimes);//query efficiency test
-//#else
-//    g.EffiCheck("/home/data/xzhouby/datasets/"+g.dataset+"/"+g.dataset+".querySamePartiCoreTree",runtimes);//query efficiency test
-//#endif
+    if(percent==0){
+        g.EffiCheck(sourcePath+"tmp/"+dataset+"_sameParti_CT"+ to_string(treeWidth)+".query",runtimes);//query efficiency test
+    }
+    else{
+        g.EffiCheck(sourcePath+"tmp/"+dataset+"_"+ to_string(percent)+"_sameParti_CT"+ to_string(treeWidth)+".query",runtimes);//query efficiency test
+    }
 
-//    g.SameTreeQueryTest(ODfile,runtimes);
-//    exit(0);
     ///Task 3: Index update
     g.IndexMaintenance(updateFile,updateType,updateBatch);//index maintenance
 //    g.IndexMaintenanceTypeTest(updateType,updateBatch);
@@ -170,6 +185,5 @@ int main(int argc, char** argv){
     cout<<"\nOverall runtime: "<<tt0.GetRuntime()<<" s."<<endl;
     cout<<"------------------\n"<<endl;
     exit(0);
-    g.clear();
 	return 0;
 }

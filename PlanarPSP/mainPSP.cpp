@@ -8,7 +8,7 @@
 
 int main(int argc, char** argv){
 
-    if( argc < 4 || argc > 11){//
+    if( argc < 4 || argc > 15){//
         printf("Planar Dynamic PSP Test.\nusage:\n");
         printf("<arg1> source path, e.g. /export/project/xzhouby\n");
         printf("<arg2> name of dataset, e.g. NY\n");
@@ -16,10 +16,14 @@ int main(int argc, char** argv){
         printf("<arg4> (optional) partitioned shortest path strategy, 1: Pre-boundary; 2: No-boundary; 3: Post-boundary. default: 2\n");
         printf("<arg5> (optional) partition method, (NC: PUNCH; MT: METIS; SC: SCOTCH; kahypar: KaHyPar; geometric: RCB; Bubble: Bubble; HEP: HEP; CLUGP: CLUGP), default: NC\n");
         printf("<arg6> (optional) partition number, e.g. 64\n");
-        printf("<arg7> (optional) update type, (0: No Update Test; 1: Decrease; 2: Increase), default: 0\n");
-        printf("<arg8> (optional) update number, default: 100\n");
-        printf("<arg9> (optional) thread number, default: 15\n");
-        printf("<arg10> (optional) preprocessing task (1: Partitioned MDE Ordering; 2: Partitioned Query Generation)\n");
+        printf("<arg7> (optional) update type, (0: No Update Test; 1: Decrease; 2: Increase; 3: Edge insert; 4: Vertex insert; 5: Edge delete; 6: Vertex delete), default: 0\n");
+        printf("<arg8> (optional) update batch number, default: 100\n");
+        printf("<arg9> (optional) update batch volume, default: 1\n");
+        printf("<arg10> (optional) edge weight change percentage, default: 0.5\n");
+        printf("<arg11> (optional) overlay simplification optimization, 0 or 1, default: 1\n");
+        printf("<arg12> (optional) thread number, default: 15\n");
+        printf("<arg13> (optional) percent for scalability test, default: 0\n");
+        printf("<arg14> (optional) preprocessing task (1: Partitioned MDE Ordering; 2: Partitioned Query Generation; 3: Structural Update Generation)\n");
         exit(0);
     }
 
@@ -32,10 +36,15 @@ int main(int argc, char** argv){
     int updateType = 0;
     int runtimes = 10000;
     runtimes = 1000;
-    int updateNum = 10;
-    updateNum = 100;
+    int batchNum = 10;
+    batchNum = 100;
+    int batchSize=1;
     int threadNum = 15;
     int preTask=0;
+    int cutType=EdgeCut;
+    int ifFullOpt=true;
+    double changeRatio=0.5;
+    int percent=0;
 
     if(argc > 1) {
         cout << "argc: " << argc << endl;
@@ -56,9 +65,9 @@ int main(int argc, char** argv){
         if(argc > 5){
             cout << "argv[5] (Partition Method): " << argv[5] << endl;//partition method
             algoParti = argv[5];
-//            if(algoParti != "NC" && algoParti != "MT"){
-//                cout<<"Wrong partition method! "<<algoParti<<endl; exit(1);
-//            }
+            if(algoParti == "HEP" || algoParti == "CLUGP"){
+                cutType=VertexCut;
+            }
         }
 
         if(argc > 6){
@@ -73,17 +82,37 @@ int main(int argc, char** argv){
 
         if(argc > 8){
             cout << "argv[8] (Batch Number): " << argv[8] << endl;//update number
-            updateNum = stoi(argv[8]);
+            batchNum = stoi(argv[8]);
         }
 
         if(argc > 9){
-            cout << "argv[9] (Thread Number): " << argv[9] << endl;//thread number
-            threadNum = stoi(argv[9]);
+            cout << "argv[9] (Batch Size): " << argv[9] << endl;//batch size
+            batchSize = stoi(argv[9]);
         }
 
         if(argc > 10){
-            cout << "argv[10] (Preprocessing Task): " << argv[10] << endl;//preprocessing task
-            preTask = stoi(argv[10]);
+            cout << "argv[10] (Weight Change Ratio): " << argv[10] << endl;//edge weight change ratio
+            changeRatio = stod(argv[10]);
+        }
+
+        if(argc > 11){
+            cout << "argv[11] (Overlay Optimization): " << argv[11] << endl;//overlay optimization
+            ifFullOpt = stoi(argv[11]);
+        }
+
+        if(argc > 12){
+            cout << "argv[12] (Thread Number): " << argv[12] << endl;//thread number
+            threadNum = stoi(argv[12]);
+        }
+
+        if(argc > 13){
+            cout << "argv[13] (Percent for Scalability): " << argv[13] << endl;//percent
+            percent = stoi(argv[13]);
+        }
+
+        if(argc > 14){
+            cout << "argv[14] (Preprocessing Task): " << argv[14] << endl;//preprocessing task
+            preTask = stoi(argv[14]);
         }
 
     }
@@ -97,6 +126,7 @@ int main(int argc, char** argv){
     string ODfile=sourcePath+dataset+".query";
     string updateFile=sourcePath+dataset+".update";
 
+
     Graph g;
     g.threadnum=threadNum;//thread number of parallel computation (can be changed)
     g.sourcePath=sourcePath;
@@ -106,6 +136,10 @@ int main(int argc, char** argv){
     g.PSPStrategy=PSPStrategy;
     g.algoParti=algoParti;
     g.partiNum=partitionNum;
+    g.pNum=partitionNum;
+    g.cutType=cutType;
+    g.updateType=updateType;
+    g.ifFullOpt=ifFullOpt;
     cout<<"Planar Dynamic PSP Test."<<endl;
     cout<<"Dataset: "<<dataset<<endl;
     if(g.algoChoice==CH){
@@ -126,42 +160,78 @@ int main(int argc, char** argv){
     }else{
         cout<<"Wrong PSP strategy! "<<g.PSPStrategy<<endl; exit(1);
     }
-    cout<<"Partition method: "<<g.algoParti<<endl;
+    if(g.cutType==EdgeCut){
+        cout<<"Cut Type: Edge-cut"<<endl;
+    }else if(g.cutType==VertexCut){
+        cout<<"Cut Type: Vertex-cut"<<endl;
+    }
+    if(g.ifFullOpt && g.PSPStrategy!=PreBoundary){
+        cout<<"With overlay simplification optimization."<<endl;
+    }else{
+        cout<<"Without overlay simplification optimization."<<endl;
+    }
+//    string pMethods[8]={"NC","MT", "SC", "kahypar", "geometric", "Bubble", "HEP", "CLUGP"};
+//    bool ifFind=false;
+//    for(int i=0;i<pMethods->size();++i){
+//        if(g.algoParti==pMethods[i]){
+//            ifFind=true;
+//            break;
+//        }
+//    }
+//    if(ifFind){
+//        cout<<"Partition method: "<<g.algoParti<<endl;
+//    }else{
+//        cout<<"Incorrect partition method! "<<g.algoParti<<endl; exit(1);
+//    }
+
     cout<<"Partition number: "<<g.partiNum<<endl;
     cout<<"Thread number: "<<g.threadnum<<endl;
 
+    if(percent!=0){
+        ODfile=sourcePath+dataset+"_"+ to_string(percent)+".query";
+        updateFile=sourcePath+dataset+"_"+ to_string(percent)+".update";
+        g.percent=percent;
+    }
 
     if(preTask==1){
-//        g.PH2HVertexOrdering(0);//MDE ordering
-//        g.PH2HVertexOrdering(1);//Boundary-first ordering
-        g.PH2HVertexOrdering(2);//Boundary-first MDE ordering
+        if(cutType==EdgeCut){
+            g.EdgeCutVertexOrdering(2);//Boundary-first MDE ordering
+//            g.EdgeCutVertexOrdering(3);//Degree-based Boundary-first ordering
+        }else if(cutType==VertexCut){
+            g.VertexCutVertexOrdering();
+        }
+
     }
     else if(preTask==2){
         g.QueryGenerationParti(true);//same-partition query generation
 
     }
-
-//    g.ReadGraph(graphfile);//
-//    g.StainingMethod(0);
+    else if(preTask==3){
+        g.StructuralUpdateGeneration(1000);
+    }
 
     ///Task 1: Index construction
     g.IndexConstruction();
 
-    ///Task 2: Query processing
-    g.CorrectnessCheck(100);
-    g.EffiCheck(ODfile,runtimes);//query efficiency test
-    g.EffiCheck(sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partitionNum)+"/same_parti.query",runtimes);//same-partition query efficiency test
-//#ifdef __APPLE__
-////    cout<<"The platform is macOS."<<endl;
-//    g.EffiCheck(ODfile+"SamePartiPlanar",runtimes);//same-partition query efficiency test
-//#else
-//    g.EffiCheck("/home/data/xzhouby/datasets/"+g.dataset+"/"+g.dataset+".querySamePartiPlanar",runtimes);//same-partition query efficiency test
-//#endif
 
-//    g.EffiCheck(ODfile+"CrossParti",runtimes);
+
+    ///Task 2: Query processing
+//    g.CorrectnessCheck(100);
+    g.EffiCheck(ODfile,runtimes);//query efficiency test
+//    g.EffiCheck(sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partitionNum)+"/same_parti.query",runtimes);//same-partition query efficiency test
+//    g.EffiCheck(sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partitionNum)+"/both_core.query",runtimes);//same-partition query efficiency test
+//    g.EffiCheck(sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partitionNum)+"/core_parti.query",runtimes);//same-partition query efficiency test
+//    g.EffiCheck(sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partitionNum)+"/parti_parti.query",runtimes);//same-partition query efficiency test
+    for(int i=1;i<11;++i){
+//        g.EffiCheck(sourcePath+dataset+"_spatial.Q"+ to_string(i),runtimes);//same-partition query efficiency test
+//        g.EffiCheck(sourcePath+dataset+"_SP.Q"+ to_string(i),runtimes);//same-partition query efficiency test
+    }
+
 //    exit(0);
     ///Task 3: Index update
-    g.IndexMaintenance(updateType,updateNum);//index maintenance
+//    g.WriteCoreIndex(sourcePath+dataset+"Core");
+//    g.WriteCoreGraph(sourcePath+dataset+"Core");
+    g.IndexMaintenance(updateType,batchNum,batchSize,changeRatio);//index maintenance
 
     tt0.stop();
     cout<<"\nOverall runtime: "<<tt0.GetRuntime()<<" s."<<endl;

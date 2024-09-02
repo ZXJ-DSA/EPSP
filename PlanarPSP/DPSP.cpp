@@ -12,13 +12,32 @@
 void Graph::IndexConstruction(){
     if(algoChoice==CH){
         cout<<"Partitioned CH."<<endl;
+        ifTreeOpt=true;
+//        ifTreeOpt=false;
         PCHIndexConstruct(PSPStrategy);
     }else if(algoChoice==H2H){
         cout<<"Partitioned H2H."<<endl;
+        ifTreeOpt=false;
         PH2HIndexConstruct(PSPStrategy);
+//        int ID=6436;
+//        cout<<"Overlay neighbor: ";
+//        for(auto it=NeighborsOverlay[ID].begin();it!=NeighborsOverlay[ID].end();++it){
+//            cout<<it->first<<"("<<it->second<<","<< PartiTag[it->first].second<<","<<fullyConnected[it->first]<<") ";
+//        }
+//        cout<<endl;
+//        cout<<"Original graph neighbor: ";
+//        for(auto it=Neighbor[ID].begin();it!=Neighbor[ID].end();++it){
+//            cout<<it->first<<"("<<it->second<<","<< PartiTag[it->first].second<<","<<fullyConnected[it->first]<<") ";
+//        }
+//        cout<<endl;
     }else if(algoChoice==PLL){
         cout<<"Partitioned PLL."<<endl;
-        PPLLIndexConstruct(PSPStrategy);
+        if(cutType==EdgeCut){
+            PPLLIndexConstruct(PSPStrategy);
+        }
+        else if(cutType==VertexCut){
+            PPLLIndexConstructVertexCut(PSPStrategy);
+        }
     }else if(algoChoice==Dijk){
         cout<<"Index-free search."<<endl;
         ReadGraph(sourcePath+dataset);//
@@ -506,17 +525,12 @@ void Graph::PCHIndexConstruct(int strategy) {
 
     /// Read order and partitions
     string partitionfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
-
     string orderfile=partitionfile+"/vertex_orderMDE2";
-//    orderfile=sourcePath+dataset+".order";
-//#ifdef __APPLE__
-////    cout<<"The platform is macOS."<<endl;
-//#else
-//    orderfile="/home/data/xzhouby/datasets/"+dataset+"/"+dataset+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
-//#endif
+    if(percent!=0){
+        partitionfile=sourcePath+"partitions/"+dataset+"_"+ to_string(percent)+"_"+algoParti+"_"+to_string(partiNum);
+        orderfile=partitionfile+"/vertex_orderMDE2";
+    }
     ReadOrder(orderfile);
-
-
     GraphPartitionRead(partitionfile);//read partitions
 
 //    vSm.reserve(node_num);
@@ -564,11 +578,26 @@ void Graph::PCHIndexConstruct(int strategy) {
 
         /// Overlay graph construction
         tt.start();
-//        Construct_OverlayGraph(true,true);//all-pair boundary shortcut
-        Construct_OverlayGraphNoAllPair(true,true);//all-pair boundary shortcut
+        if(ifTreeOpt){
+            cout<<"With tree optimization."<<endl;
+            Construct_OverlayGraphNoAllPair(true,true);//all-pair boundary shortcut
+        }
+        else{
+            cout<<"Without tree optimization."<<endl;
+            Construct_OverlayGraph(true,true);//all-pair boundary shortcut
+        }
         tt.stop();
         runT2 = tt.GetRuntime();
         cout<<"Overlay graph construction time: "<<runT2<<" s."<< endl;
+
+        unsigned long long overlayENum=0;
+        for(auto it=OverlayVertex.begin();it!=OverlayVertex.end();++it){
+            overlayENum+=NeighborsOverlay[*it].size();
+        }
+        double overlayDegree=overlayENum;
+        overlayDegree=overlayDegree/OverlayVertex.size();
+        cout<<"Overlay edge number: "<<overlayENum<<" ; Average overlay vertex degree: "<< overlayDegree<<endl;
+
 
         /// Overlay index construction
         tt.start();
@@ -614,18 +643,17 @@ void Graph::PH2HIndexConstruct(int strategy) {
 
     /// Read order and partitions
     string partitionfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
-
     string orderfile=partitionfile+"/vertex_orderMDE2";
-//#ifdef __APPLE__
-////    cout<<"The platform is macOS."<<endl;
-//#else
-//    orderfile="/home/data/xzhouby/datasets/"+dataset+"/"+dataset+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
-//#endif
+
+    if(percent!=0){
+        partitionfile=sourcePath+"partitions/"+dataset+"_"+ to_string(percent)+"_"+algoParti+"_"+to_string(partiNum);
+        orderfile=partitionfile+"/vertex_orderMDE2";
+    }
+
     ReadOrder(orderfile);
-
-
     GraphPartitionRead(partitionfile);//read partitions
 
+//    ReadCoordinate(sourcePath+dataset+".co");
 //    vSm.reserve(node_num);
 //    for(int i = 0; i < node_num; i++)
 //    {
@@ -634,8 +662,6 @@ void Graph::PH2HIndexConstruct(int strategy) {
 //    }
 
     Timer tt;
-
-
     if(strategy==PreBoundary){
         /// All-pair boundary shortcut computation
         tt.start();
@@ -657,7 +683,8 @@ void Graph::PH2HIndexConstruct(int strategy) {
         tt.stop();
         runT3 = tt.GetRuntime();
         cout<<"Overlay index construction time: "<<runT3<<" s."<< endl;
-    }else if(strategy>=NoBoundary){
+    }
+    else if(strategy>=NoBoundary){
         tt.start();
         /// Partition index and Overlay graph construction
 //    Construct_PartiIndex(false);
@@ -670,11 +697,26 @@ void Graph::PH2HIndexConstruct(int strategy) {
 
         /// Overlay graph construction
         tt.start();
-//        Construct_OverlayGraph(true, false);//all-pair boundary shortcut
-        Construct_OverlayGraphNoAllPair(true,false);
+        if(ifTreeOpt){
+            cout<<"With tree optimization."<<endl;
+            Construct_OverlayGraphNoAllPair(true,false);
+        }
+        else{
+            cout<<"Without tree optimization."<<endl;
+            Construct_OverlayGraph(true, false);//all-pair boundary shortcut
+        }
+
         tt.stop();
         runT2 = tt.GetRuntime();
         cout<<"Overlay graph construction time: "<<runT2<<" s."<< endl;
+
+        unsigned long long overlayENum=0;
+        for(auto it=OverlayVertex.begin();it!=OverlayVertex.end();++it){
+            overlayENum+=NeighborsOverlay[*it].size();
+        }
+        double overlayDegree=overlayENum;
+        overlayDegree=overlayDegree/OverlayVertex.size();
+        cout<<"Overlay edge number: "<<overlayENum<<" ; Average overlay vertex degree: "<< overlayDegree<<endl;
 
         /// Overlay index construction
         tt.start();
@@ -720,17 +762,133 @@ void Graph::PPLLIndexConstruct(int strategy) {
 
     /// Read order and partitions
     string partitionfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
+    string orderfile=partitionfile+"/vertex_orderMDE2";
+    if(percent!=0){
+        partitionfile=sourcePath+"partitions/"+dataset+"_"+ to_string(percent)+"_"+algoParti+"_"+to_string(partiNum);
+        orderfile=partitionfile+"/vertex_orderMDE2";
+    }
+    if(dataset=="Facebook"||dataset=="FaceSocial"){
+        orderfile=partitionfile+"/vertex_order";
+    }
+
+    ReadOrder(orderfile);
+    GraphPartitionRead(partitionfile);//read partitions
+
+//    ReadCoreIndex(sourcePath+dataset+"Core");
+//    return;
+
+    vSm.reserve(node_num);
+    for(int i = 0; i < node_num; i++)
+    {
+        Semaphore* s = new Semaphore(1);
+        vSm.push_back(s);
+    }
+    BPCLBSize=threadnum*10;
+
+    Timer tt;
+
+    if(strategy==PreBoundary){
+        /// All-pair boundary shortcut computation
+        tt.start();
+        AllPairBoundaryDisCompute(true);
+        tt.stop();
+        runT1 = tt.GetRuntime();
+        cout<<"All-pair boundary shortcut construction time: "<<runT1<<" s"<<endl;
+
+        /// Overlay index construction
+        tt.start();
+        ConstructPLL_OverlayIndex(NeighborsOverlayV);
+        tt.stop();
+        runT3 = tt.GetRuntime();
+        cout<<"Overlay index construction time: "<<runT3<<" s."<< endl;
+
+        /// Partition index and construction
+        tt.start();
+        ConstructPLL_PartiIndex(true);
+        tt.stop();
+        runT2 = tt.GetRuntime();
+        cout<<"Partition index construction time: "<<runT2<<" s"<<endl;
+
+
+    }
+    else if(strategy>=NoBoundary){
+        tt.start();
+        /// Partition index and Overlay graph construction
+        ConstructPLL_PartiIndex(true);
+//        ConstructPLL_PartiIndex(false);
+        tt.stop();
+        runT1 = tt.GetRuntime();
+        cout<<"Partition index construction time: "<<runT1<<" s"<<endl;
+
+        /// Overlay graph construction
+        tt.start();
+        ConstructPLL_OverlayGraph(true);
+//        ConstructPLL_OverlayGraph(false);
+        tt.stop();
+        runT2 = tt.GetRuntime();
+        cout<<"Overlay graph construction time: "<<runT2<<" s."<< endl;
+
+        unsigned long long overlayENum=0;
+        for(auto it=OverlayVertex.begin();it!=OverlayVertex.end();++it){
+            overlayENum+=NeighborsOverlay[*it].size();
+        }
+        double overlayDegree=overlayENum;
+        overlayDegree=overlayDegree/OverlayVertex.size();
+        cout<<"Overlay edge number: "<<overlayENum<<" ; Average overlay vertex degree: "<< overlayDegree<<endl;
+
+        /// Overlay index construction
+        tt.start();
+        ConstructPLL_OverlayIndex(NeighborsOverlayV);
+        tt.stop();
+        runT3 = tt.GetRuntime();
+        cout<<"Overlay index construction time: "<<runT3<<" s."<< endl;
+
+
+        /// Partition index repair
+        if(strategy==PostBoundary){
+            NeighborsPartiPostV=NeighborsParti;
+            tt.start();
+            ConstructPartitionPostPLL(true);
+            tt.stop();
+            runT4 += tt.GetRuntime();
+            cout<<"Time for post partition construction: "<<tt.GetRuntime()<<" s."<<endl;
+
+            tt.start();
+            ConstructPLL_PartiIndexPost(true);
+            tt.stop();
+            runT4 += tt.GetRuntime();
+            cout<<"Time for post partition index construction: "<<tt.GetRuntime()<<" s."<<endl;
+
+//        tt.start();
+//        Repair_PartiIndex(true);
+////        Repair_PartiIndex(false);
+//        tt.stop();
+//        runT3 = tt.GetRuntime();
+//        cout<<"Partition index repair time: "<<runT4<<" s"<<endl;
+        }
+//    Compute_tree_label(ifParallel, ifOpt);//Construct periphery index (H2H label + interface label)
+    }
+
+
+
+    cout<<"Overall Construction Time: "<<runT1+runT2+runT3+runT4+runT5<<" s."<<endl;
+
+    IndexSizePPLL();//index (labeling+pruning point) size computation
+}
+
+void Graph::PPLLIndexConstructVertexCut(int strategy) {
+    double runT1, runT2, runT3, runT4, runT5;
+    runT1=0, runT2=0, runT3=0, runT4=0, runT5=0;
+
+    /// Read order and partitions
+    string partitionfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
 
     string orderfile=partitionfile+"/vertex_orderMDE2";
-//#ifdef __APPLE__
-////    cout<<"The platform is macOS."<<endl;
-//#else
-//    orderfile="/home/data/xzhouby/datasets/"+dataset+"/"+dataset+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
-//#endif
+    orderfile=sourcePath+dataset+".order";
+    orderfile=partitionfile+"/vertex_order";
     ReadOrder(orderfile);
 
-
-    GraphPartitionRead(partitionfile);//read partitions
+    GraphPartitionReadVertexCut(partitionfile);//read partitions
 
     vSm.reserve(node_num);
     for(int i = 0; i < node_num; i++)
@@ -954,9 +1112,18 @@ void Graph::IndexSizePPLL(){
     cout<<"Partition graphs index size "<<(double)(m3+m4)/1024/1024<<" MB"<<endl;
     cout<<"Overall index size "<<(double)m/1024/1024<<" MB"<<endl;
 }
+//vertex ordering for vertex-cut partition
+void Graph::VertexCutVertexOrdering(){
 
-void Graph::PH2HVertexOrdering(int type){
-    ReadGraph(sourcePath+dataset);
+}
+//vertex ordering for edge-cut partition on road networks
+void Graph::EdgeCutVertexOrdering(int type){
+    if(percent!=0){
+        ReadGraph(sourcePath+dataset+"_"+ to_string(percent));
+    }else{
+        ReadGraph(sourcePath+dataset);
+    }
+
     int pNum=partiNum;
 
 //#ifdef __APPLE__
@@ -997,7 +1164,20 @@ void Graph::PH2HVertexOrdering(int type){
             SketchGraphBuild();
             OverlayOrderingBuild();
             PartitionOrderingBuildMDE(true);
-            OrderingAssemblyMDEBoundaryFirst(pNum);
+            string filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE2";
+            if(percent!=0){
+                filename=sourcePath+"partitions/"+dataset+"_"+ to_string(percent)+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE2";
+            }
+            OrderingAssemblyMDEBoundaryFirst(filename);
+            break;
+        }
+        case 3:{//Degree-based boundary-first ordering
+            cout<<"Degree-based Boundary-first ordering."<<endl;
+            SketchGraphBuild();
+            OverlayOrderingBuild();
+            PartitionOrderingBuildDegree(true);
+            string filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_order";
+            OrderingAssemblyMDEBoundaryFirst(filename);
             break;
         }
         default:{
@@ -1006,13 +1186,8 @@ void Graph::PH2HVertexOrdering(int type){
     }
     exit(0);
 }
-void Graph::OrderingAssemblyMDEBoundaryFirst(int pNum){
-    string filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE2";
-//#ifdef __APPLE__
-////    cout<<"The platform is macOS."<<endl;
-//#else
-//    filename="/home/data/xzhouby/datasets/"+dataset+"/"+dataset+"_"+algoParti+"_"+ to_string(pNum)+"/vertex_orderMDE2";
-//#endif
+void Graph::OrderingAssemblyMDEBoundaryFirst(string filename){
+//    string filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE2";
 
     ofstream OF(filename,ios::out);
     if(!OF.is_open()){
@@ -1085,7 +1260,7 @@ void Graph::OrderingAssemblyMDEBoundaryFirst(int pNum){
 }
 //function of MDE ordering assemblying
 void Graph::OrderingAssemblyMDE(int pNum){
-    string filename=sourcePath+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE";
+    string filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE";
 
     ofstream OF(filename,ios::out);
     if(!OF.is_open()){
@@ -1124,7 +1299,7 @@ void Graph::OrderingAssemblyMDE(int pNum){
 }
 //function of boundary-first assemblying
 void Graph::OrderingAssemblyBoundaryFirst(int pNum){
-    string orderfile=sourcePath+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_order2";
+    string orderfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_order";
     set<int> vcheck;//use to check the redundant ordered vertex
     vcheck.clear();
     vNodeOrder.clear();
@@ -1273,6 +1448,9 @@ void Graph::SketchGraphBuild(){
     bool flag_minus = false;
 
     string filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
+    if(percent!=0){
+        filename=sourcePath+"partitions/"+dataset+"_"+ to_string(percent)+"_"+algoParti+"_"+to_string(partiNum);
+    }
     ifstream IF1(filename+"/subgraph_vertex");
     if(!IF1){
         cout<<"Cannot open file "<<"subgraph_vertex"<<endl;
@@ -1414,6 +1592,7 @@ void Graph::SketchGraphBuild(){
         cout<<k<<" "<<NeighborSketch[k].size()<<endl;
     }*/
 }
+
 
 void Graph::OverlayOrderingBuild(){
 
@@ -1713,33 +1892,77 @@ void Graph::PartitionOrderingBuildMDE(bool ifParallel){
             cout<<"Batch number: "<<processID[0].size()<<endl;
             boost::thread_group thread;
             for(auto j=0;j<processID.size();++j){
-                thread.add_thread(new boost::thread(&Graph::PartitionOrderingV, this, boost::ref(processID[j]) ));
+                thread.add_thread(new boost::thread(&Graph::PartitionOrderingMDEV, this, boost::ref(processID[j]) ));
             }
             thread.join_all();
         }
         else{//thread number is sufficient
             boost::thread_group thread;
             for(auto j=0;j<partiNum;++j){
-                thread.add_thread(new boost::thread(&Graph::PartitionOrdering, this, j));
+                thread.add_thread(new boost::thread(&Graph::PartitionOrderingMDE, this, j));
             }
             thread.join_all();
         }
     }
     else{
         for(int i=0;i<partiNum;++i){
-            PartitionOrdering(i);
+            PartitionOrderingMDE(i);
         }
     }
 
 }
 
-void Graph::PartitionOrderingV(vector<int>& p){
+void Graph::PartitionOrderingBuildDegree(bool ifParallel){
+    _DD_.assign(node_num,0);
+    DD.assign(node_num,0);
+//    vNodeOrderParti.assign(partiNum,map<int,int>());
+    vNodeOrderParti.assign(partiNum,vector<int>());
+
+    if(ifParallel){
+        if(threadnum<partiNum){
+            vector<vector<int>> processID;
+            processID.assign(threadnum, vector<int>());
+            vector<int> vertices;
+            for(int pid=0;pid<partiNum;++pid){
+                vertices.emplace_back(pid);
+            }
+            ThreadDistribute(vertices, processID);
+            cout<<"Batch number: "<<processID[0].size()<<endl;
+            boost::thread_group thread;
+            for(auto j=0;j<processID.size();++j){
+                thread.add_thread(new boost::thread(&Graph::PartitionOrderingDegreeV, this, boost::ref(processID[j]) ));
+            }
+            thread.join_all();
+        }
+        else{//thread number is sufficient
+            boost::thread_group thread;
+            for(auto j=0;j<partiNum;++j){
+                thread.add_thread(new boost::thread(&Graph::PartitionOrderingDegree, this, j));
+            }
+            thread.join_all();
+        }
+    }
+    else{
+        for(int i=0;i<partiNum;++i){
+            PartitionOrderingDegree(i);
+        }
+    }
+
+}
+
+void Graph::PartitionOrderingMDEV(vector<int>& p){
     for(int i=0;i<p.size();++i){
-        PartitionOrdering(p[i]);
+        PartitionOrderingMDE(p[i]);
     }
 }
 
-void Graph::PartitionOrdering(int pid){
+void Graph::PartitionOrderingDegreeV(vector<int>& p){
+    for(int i=0;i<p.size();++i){
+        PartitionOrderingDegree(p[i]);
+    }
+}
+
+void Graph::PartitionOrderingMDE(int pid){
 
     set<DegComp> Deg;
     int ID,degree;
@@ -1820,6 +2043,47 @@ void Graph::PartitionOrdering(int pid){
     }
 }
 
+void Graph::PartitionOrderingDegree(int pid){
+
+    set<DegComp> Deg;
+    int ID,degree;
+    for(int i=0;i<PartiVertex[pid].size();i++){
+        ID = PartiVertex[pid][i];
+        degree=NeighborsParti[ID].size();
+        if(degree!=0){
+            _DD_[ID]=degree;
+            DD[ID]=degree;
+            Deg.insert(DegComp(ID));
+        }else{
+            _DD_[ID]=degree;
+            DD[ID]=degree;
+            Deg.insert(DegComp(ID));
+            cout<<"PID "<<pid<<" . Not single CC! degree is zero. "<<ID<<" "<<degree<<endl;
+//            exit(1);
+        }
+    }
+
+
+    int count=0;
+    int Twidth=0;
+    int order_i=0;
+    int ID1, ID2;
+    while(!Deg.empty()){
+//        if(count%10000==0)
+//            cout<<"count "<<count<<" , treewidth "<<Twidth<<endl;
+        count+=1;
+        int x=(*Deg.begin()).x;
+
+//        vNodeOrderParti[pid].insert({order_i,x});
+        vNodeOrderParti[pid].push_back(x);
+        order_i++;
+        Deg.erase(Deg.begin());
+
+    }
+    if(vNodeOrderParti[pid].size() != PartiVertex[pid].size()){
+        cout<<"Inconsistent size! "<< pid <<" "<<vNodeOrderParti[pid].size() <<" "<< PartiVertex[pid].size()<<endl; exit(1);
+    }
+}
 
 
 /// Functions for MDE contraction
@@ -1862,7 +2126,18 @@ void Graph::CorrectnessCheck(int runtimes){
 //        if(i%100==0) cout<<i<<endl;
         s=rand()%node_num;
         t=rand()%node_num;
-//        s=43465, t=46390;
+//        s=8409, t=867;//PH2H
+//        s=867, t=2293;//PH2H
+//        s=8784, t=9502;//PH2H
+//        s=8497, t=1397;
+//        s=410, t=835;
+//        s=2285, t=2284;
+//        s=2442, t=2294;
+//        if(node_num>9537){
+//            s=9537;
+//        }else{
+//            s=rand()%node_num;
+//        }
 
         if(algoChoice==CH){
             if(PSPStrategy==PreBoundary || PSPStrategy==NoBoundary){
@@ -1878,6 +2153,8 @@ void Graph::CorrectnessCheck(int runtimes){
         }else if(algoChoice==H2H){
             tt.start();
             d2=QueryPH2H(s,t);
+//            d2=QueryDebug(s,t);
+//            d2=QueryPCH(s,t,Trees);
             tt.stop();
         }else if(algoChoice==PLL){
             tt.start();
@@ -1890,7 +2167,7 @@ void Graph::CorrectnessCheck(int runtimes){
             tt.stop();
         }
         runT+=tt.GetRuntime();
-
+//        cout<<s<<"("<<PartiTag[s].first<<") "<<t<<"("<<PartiTag[t].first<<") "<<d2<<" "<<d1<<endl;
         d1=Dijkstra(s,t,Neighbor);
 //        cout<<"Algorithm "<<algoQuery<<", "<<i<<": "<<s<<"("<<NodeOrder[s]<<") "<<t<<"("<<NodeOrder[t]<<") "<<d2<<" "<<d1<<" ; Partition Tag: "<< PartiTag[s].first<<" "<<PartiTag[t].first<<"; Boundary Tag: "<<PartiTag[s].second<<" "<<PartiTag[t].second<<endl;
         if(d1!=d2){
@@ -1903,6 +2180,8 @@ void Graph::CorrectnessCheck(int runtimes){
                 }
             }else if(algoChoice==H2H){
                 QueryDebug(s,t);
+            }else if(algoChoice==PLL){
+                QueryPPLLDebug(s,t);
             }
 
 
@@ -1918,7 +2197,7 @@ int Graph::QueryDebug(int ID1, int ID2){
 
     if(PartiTag[ID1].second && PartiTag[ID2].second){//Case 1: both in core
         cout<<"Core-Core"<<endl;
-//        dis=QueryCoreDebug(ID1, ID2);
+        dis=QueryCoreDebug(ID1, ID2);
 
     }else if(PartiTag[ID1].second && !PartiTag[ID2].second){//Case 2: ID2 in partition, ID1 in core
         cout<<"Core-Parti"<<endl;
@@ -1983,15 +2262,18 @@ int Graph::QueryDebug(int ID1, int ID2){
 //            QueryCoreDebug(b1,b2);
 //            QueryPartiPartiExtLCADebug(ID1,ID2);
 
-//                if(d1!=dDijk_s){
-//                    DijkstraPath(ID1,b1);
-//                }
-//                if(d_12!=dDijk_12){
-//                    DijkstraPath(b1,b2);
-//                }
-//                if(d2!=dDijk_t){
-//                    DijkstraPath(b2,ID2);
-//                }
+            if(d1!=dDijk_s){
+                DijkstraPath(ID1,b1,Neighbor);
+            }
+            if(d_12!=dDijk_12){
+                DijkstraPath(b1,b2,Neighbor);
+            }
+            if(d2!=dDijk_t){
+                DijkstraPath(b2,ID2,Neighbor);
+            }
+            if(dis!=Dijkstra(ID1,ID2,Neighbor)){
+                DijkstraPath(ID1,ID2,Neighbor);
+            }
 
         }
         else{//Case 4: in the same periphery
@@ -2002,13 +2284,15 @@ int Graph::QueryDebug(int ID1, int ID2){
             int pid1=PartiTag[ID1].first;
             int pid2=PartiTag[ID2].first;
 
-            int temp_dis = QueryH2HPartition(ID1, ID2, pid1);/// d2 may be wrong sometimes
+            int temp_dis;
+//            temp_dis = QueryH2HPartition(ID1, ID2, pid1);/// d2 may be wrong sometimes
+            temp_dis = QueryH2HPartitionDebug(ID1, ID2, pid1);/// d2 may be wrong sometimes
             if (temp_dis < d){
                 d = temp_dis;//QueryH2HPartition(ID1,ID2,pid1);
                 b1=b2=-1;
                 df1=df2=-1;
             }
-
+            cout<<"d2: "<<d<<endl;
             vector<int> B = BoundVertex[pid1];
             map<int, int> m1, m2;
             m1.clear();
@@ -2022,7 +2306,7 @@ int Graph::QueryDebug(int ID1, int ID2){
 
                 d1 = QueryH2HPartition(ID1,bID,pid1);
                 d2 = QueryH2HPartition(ID2,bID,pid1);
-
+//                cout<<ID1<<" "<<bID<<" "<<ID2<<": "<<d1<<" "<<d2<<" "<<d1+d2<<"("<<d<<")"<<endl;
                 if (d1 < d) {
                     B1.push_back(bID);
                     m1.insert(make_pair(bID, d1));
@@ -2059,7 +2343,7 @@ int Graph::QueryDebug(int ID1, int ID2){
                 int dDijk2 = Dijkstra(ID1,ID2,Neighbor);
                 cout<<"d2: "<<d<<"; "<<dDijk2<<endl;
                 if(d!=dDijk2){
-//                        DijkstraPath(ID1,ID2);
+                    DijkstraPath(ID1,ID2,Neighbor);
                 }
             }
 
@@ -2131,6 +2415,15 @@ void Graph::EffiCheck(string filename,int runtimes){
     if(ifDebug){
         cout<<"With correctness check."<<endl;
     }
+
+    vector<pair<int,double>> queryTimes;
+    queryTimes.assign(4, make_pair(0,0));
+    vector<string> queryTypes;
+    queryTypes.push_back("Same-partition: ");
+    queryTypes.push_back("Different-parti with both-core: ");
+    queryTypes.push_back("Different-parti with core-partition: ");
+    queryTypes.push_back("Different-parti with both-partition: ");
+    qBNum=0;
     clock_t start = clock();
     vector<int> results(runtimes,-1);
     for(int i=0;i<runtimes;i++){
@@ -2164,9 +2457,31 @@ void Graph::EffiCheck(string filename,int runtimes){
 //            d1=Dijkstra(ID1,ID2,Neighbor);
             tt.stop();
         }
-
         runT+=tt.GetRuntime();
         results[i]=d1;
+
+        if(PartiTag[ID1].first==PartiTag[ID2].first){//same-partition
+            queryTimes[0].first++;
+            queryTimes[0].second+=tt.GetRuntime();
+//            cout<<ID1<<"("<<PartiTag[ID1].first<<","<<PartiTag[ID1].second<<") "<<ID2<<"("<<PartiTag[ID2].first<<","<<PartiTag[ID2].second<<") "<<d1<<" "<<EuclideanDis(make_pair((double)GraphLocation[ID1].first/1000000,(double)GraphLocation[ID1].second/1000000),make_pair((double)GraphLocation[ID2].first/1000000,(double)GraphLocation[ID2].second/1000000))*1000<<endl;
+        }else{
+            if(PartiTag[ID1].second && PartiTag[ID2].second){//both core
+                queryTimes[1].first++;
+                queryTimes[1].second+=tt.GetRuntime();
+            }else if(PartiTag[ID1].second || PartiTag[ID2].second){//one core, one partition
+                queryTimes[2].first++;
+                queryTimes[2].second+=tt.GetRuntime();
+            }else if(!PartiTag[ID1].second && !PartiTag[ID2].second){//different-partition
+                queryTimes[3].first++;
+                queryTimes[3].second+=tt.GetRuntime();
+//                cout<<ID1<<"("<<PartiTag[ID1].first<<","<<PartiTag[ID1].second<<") "<<ID2<<"("<<PartiTag[ID2].first<<","<<PartiTag[ID2].second<<") "<<d1<<" "<<EuclideanDis(make_pair((double)GraphLocation[ID1].first/1000000,(double)GraphLocation[ID1].second/1000000),make_pair((double)GraphLocation[ID2].first/1000000,(double)GraphLocation[ID2].second/1000000))*1000<<endl;
+            }
+            else{
+                cout<<"Wrong."<<endl; exit(1);
+            }
+        }
+
+
         if(ifDebug){
             d2= Dijkstra(ID1,ID2,Neighbor);
             if(d1!=d2){
@@ -2181,8 +2496,10 @@ void Graph::EffiCheck(string filename,int runtimes){
         }
 
     }
-
-
+    for(int i=0;i<queryTimes.size();++i){
+        cout<<queryTypes[i]<<" ("<<queryTimes[i].first<<"): "<<1000*queryTimes[i].second/queryTimes[i].first<< " ms."<<endl;
+    }
+    cout<<"qBNum: "<<qBNum<<" ; average: "<<(double)qBNum/queryTimes[3].first<<endl;
     cout<<"Average Query Time: "<<(double)runT*1000/runtimes<<" ms. "<<1000*(double)(clock() - start) / (CLOCKS_PER_SEC*runtimes)<<" ms."<<endl;
 }
 
@@ -2195,29 +2512,26 @@ void Graph::DFSTree(vector<int>& tNodes, int id){
 }
 
 
-
-
-
 /// Index Maintenance
 
 
 //function of testing the throughput of path-finding system, batchInterval is the time interval between two adjacent update batch (in seconds)
-void Graph::IndexMaintenance(int updateType, int updateSize) {
+void Graph::IndexMaintenance(int updateType, int batchNum, int batchSize, double changeRatio) {
     cout<<"Shortest path query throughput test..."<<endl;
     // read updates
     string file = sourcePath+dataset + ".update";
+//    file = sourcePath+dataset + ".update2";
     bool ifDebug=false;
 //    ifDebug=true;
     vector<pair<pair<int,int>,pair<int,int>>> wBatch;
     int ID1, ID2, oldW, newW;
     srand(0);
     vector<pair<pair<int,int>,int>> updateData;
-    ReadUpdate(file, updateData);
-
-    cout<<"Update Number: "<<updateSize<<endl;
-
     string queryF = sourcePath+dataset + ".query";
-//    filename = sourcePath+dataset + ".queryParti";
+    if(percent!=0){
+        queryF=sourcePath+dataset+"_"+ to_string(percent)+".query";
+        file=sourcePath+dataset+"_"+ to_string(percent)+".update";
+    }
     ifstream IF(queryF);
     if(!IF){
         cout<<"Cannot open file "<<queryF<<endl;
@@ -2233,82 +2547,132 @@ void Graph::IndexMaintenance(int updateType, int updateSize) {
     }
     IF.close();
 
+    if(updateType==EdgeInsertion || updateType==VertexInsertion){
+        file=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(pNum)+"/EdgeInsert.update";
+    }
+    ReadUpdate(file, updateData);
+    if(batchNum*batchSize>updateData.size()){
+        batchNum=updateData.size()/batchSize;
+    }
+    cout<<"Update Batch Number: "<<batchNum<<" ; batch size: "<<batchSize<<endl;
+
+
     Timer tt;
     double runT1=0, runT2 = 0;
+    int update_i=0;
+    int updateNumSum=0;
     switch (updateType) {
         case 0:{
             break;
         }
-        case 1:{
+        case EdgeDecrease:{
             //Decrease update
             cout<<"Update type: Decrease"<<endl;
-            Graph g2=*this;
-            for(int u=0;u<updateSize;u++){
+            updateNumSum=0;
+            cout<<"Edge weight change ratio: "<<changeRatio<<endl;
+//            Graph g2=*this;
+            for(int u=0;u<batchNum;u++){
                 wBatch.clear();
-                ID1 = updateData[u].first.first;
-                ID2 = updateData[u].first.second;
-                oldW = updateData[u].second;
-                newW=oldW*0.5;
-                if(newW < 1) {
-                    cout<<"New edge weight is not positive! "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
-                    exit(1);
-                }
-                wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
-                if(ifDebug){
-                    cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
+                for(int i=0;i<batchSize;++i){
+                    update_i=u*batchSize+i;
+                    ID1 = updateData[update_i].first.first;
+                    ID2 = updateData[update_i].first.second;
+                    oldW = updateData[update_i].second;
+                    newW=oldW*(1-changeRatio);
+                    if(newW < 1) {
+                        cout<<"New edge weight is not positive! "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
+//                        exit(1);
+                        continue;
+                    }
+                    wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+                    if(ifDebug){
+//                        cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
+                    }
                 }
 
+                cout<<"Batch "<<u<<" : "<<wBatch.size()<<endl;
+                updateNumSum+=wBatch.size();
                 tt.start();
                 if(algoChoice==CH){
                     if(PSPStrategy==PreBoundary){
-//                        PCHBatchUpdateDecPre(wBatch, u, runT1);
-                        g2.PCHBatchUpdateDecPre(wBatch, u, runT1);
+                        PCHBatchUpdateDecPre(wBatch, u, runT1);
+//                        g2.PCHBatchUpdateDecPre(wBatch, u, runT1);
                     }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
-//                        PCHBatchUpdateDec(wBatch, u, runT1);
-                        g2.PCHBatchUpdateDec(wBatch, u, runT1);
+                        PCHBatchUpdateDec(wBatch, u, runT1);
+//                        g2.PCHBatchUpdateDec(wBatch, u, runT1);
                     }
                 }else if(algoChoice==H2H){
                     if(PSPStrategy==PreBoundary){
-//                        PH2HBatchUpdateDecPre(wBatch, u, runT1);
-                        g2.PH2HBatchUpdateDecPre(wBatch, u, runT1);
+                        PH2HBatchUpdateDecPre(wBatch, u, runT1);
+//                        g2.PH2HBatchUpdateDecPre(wBatch, u, runT1);
                     }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
-//                        PH2HBatchUpdateDec(wBatch, u, runT1);
-                        g2.PH2HBatchUpdateDec(wBatch, u, runT1);
+                        PH2HBatchUpdateDec(wBatch, u, runT1);
+//                        g2.PH2HBatchUpdateDec(wBatch, u, runT1);
                     }
                 }else if(algoChoice==PLL){
                     if(PSPStrategy==PreBoundary){
-//                        PPLLBatchUpdateDecPre(wBatch, u, runT1);
-                        g2.PPLLBatchUpdateDecPre(wBatch, u, runT1);
+                        PPLLBatchUpdateDecPre(wBatch);
+//                        g2.PPLLBatchUpdateDecPre(wBatch);
                     }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
-//                        PPLLBatchUpdateDec(wBatch, u, runT1);
-                        g2.PPLLBatchUpdateDec(wBatch, u, runT1);
+                        PPLLBatchUpdateDec(wBatch);
+//                        g2.PPLLBatchUpdateDec(wBatch);
                     }
                 }
                 tt.stop();
                 runT1+=tt.GetRuntime();
+                cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
                 if(ifDebug){
-//                        g2.CorrectnessCheckH2H(100);
+//                     g2.CorrectnessCheck(100);
                     CorrectnessCheck(100);
                 }
 
             }
-            cout<<"Average update time: "<<runT1/updateSize<<" s."<<endl;
+            cout<<"Edge decrease. Average batch update time: "<<runT1/batchNum<<" s; single edge update time: "<<runT1/updateNumSum<<" s."<<endl;
 //            break;
         }
-        case 2:{
+        case EdgeIncrease:{
             //Increase update
             cout<<"Update type: Increase"<<endl;
-
-            for(int u=0;u<updateSize;++u){
+            cout<<"Edge weight change ratio: "<<changeRatio<<endl;
+            updateNumSum=0;
+            for(int u=0;u<batchNum;++u){
+//            for(int u=30;u<31;++u){
                 wBatch.clear();
-                ID1 = updateData[u].first.first;
-                ID2 = updateData[u].first.second;
-                oldW = updateData[u].second;
-                newW = oldW * 1.5;
-                wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
-                if (ifDebug) {
-                    cout << "Batch " << u << ": " << ID1 << " " << ID2 << " " << oldW << " " << newW << endl;
+                for(int i=0;i<batchSize;++i){
+                    update_i=u*batchSize+i;
+                    ID1 = updateData[update_i].first.first;
+                    ID2 = updateData[update_i].first.second;
+                    oldW = updateData[update_i].second;
+                    bool ifFind=false;
+                    for(auto it=Neighbor[ID1].begin();it!=Neighbor[ID1].end();++it){
+                        if(it->first==ID2){
+                            oldW=it->second;
+                            ifFind=true;
+                            break;
+                        }
+                    }
+                    if(!ifFind){
+                        cout<<"Not found. "<<ID1<<" "<<ID2<<endl; exit(1);
+                    }
+                    newW = oldW * (1+changeRatio);
+                    wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+                    if (ifDebug) {
+//                        cout << "Batch " << u << ": " << ID1<<"("<<PartiTag[ID1].first<<","<<PartiTag[ID1].second <<","<<NodeOrder[ID1]<< ") " << ID2<<"("<<PartiTag[ID2].first<<","<<PartiTag[ID2].second <<","<<NodeOrder[ID2]<< ") " << oldW << " " << newW << endl;
+                    }
                 }
+
+                cout << "Batch " << u << ": " << wBatch.size() << endl;
+                updateNumSum+=wBatch.size();
+                int a=2442,b=2294;
+                a=2285,b=2284;
+//                cout<<"Before update. "<<a<<" "<<b<<" "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<","<<Dijkstra(b,a,Neighbor)<<")"<<endl;
+//                int b1=6480,b2=774;
+//                cout<<"Before update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                int d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+//                DijkstraPath(a,b,NeighborsOverlay);
+//                DijkstraPath(a,b,Neighbor);
+//                QueryDebug(a,b);
                 tt.start();
                 if(algoChoice==CH){
                     if(PSPStrategy==PreBoundary){
@@ -2324,18 +2688,357 @@ void Graph::IndexMaintenance(int updateType, int updateSize) {
                     }
                 }else if(algoChoice==PLL){
                     if(PSPStrategy==PreBoundary){
-                        PPLLBatchUpdateIncPre(wBatch, u, runT2);
+                        PPLLBatchUpdateIncPre(wBatch);
                     }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
-                        PPLLBatchUpdateInc(wBatch, u, runT2);
+                        PPLLBatchUpdateInc(wBatch);
                     }
                 }
                 tt.stop();
                 runT2+=tt.GetRuntime();
+
+//                cout<<"After update. "<<a<<" "<<b<<" "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<","<<Dijkstra(b,a,Neighbor)<<")"<<endl;
+//                cout<<"After update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+//                int ID=6436;
+//                cout<<"Overlay neighbor: ";
+//                for(auto it=NeighborsOverlay[ID].begin();it!=NeighborsOverlay[ID].end();++it){
+//                    cout<<it->first<<"("<<it->second<<","<< PartiTag[it->first].second<<","<<fullyConnected[it->first]<<") ";
+//                }
+//                cout<<endl;
+                cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
                 if(ifDebug){
                     CorrectnessCheck(100);
                 }
             }
-            cout<<"Average update time: "<<runT2/updateSize<<" s."<<endl;
+            cout<<"Edge increase. Average batch update time: "<<runT2/batchNum<<" s; single edge update time: "<<runT2/updateNumSum<<" s."<<endl;
+            break;
+        }
+        case EdgeInsertion:{
+            // Edge insertion
+            cout<<"Update type: Edge insertion"<<endl;
+            updateNumSum=0;
+            for(int u=0;u<batchNum;++u){
+                wBatch.clear();
+                for(int i=0;i<batchSize;++i){
+                    update_i=u*batchSize+i;
+                    ID1 = updateData[update_i].first.first;
+                    ID2 = updateData[update_i].first.second;
+                    oldW = INF;
+                    for(auto it=Neighbor[ID1].begin();it!=Neighbor[ID1].end();++it){
+                        if(it->first==ID2){
+                            cout<<"Wrong edge insertion update. Already exist. "<<ID1<<" "<<ID2<<" "<<it->second<<endl;
+                            exit(1);
+                        }
+                    }
+                    newW = updateData[update_i].second*2;
+                    wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+                    if (ifDebug) {
+                        cout << "Batch " << u << ": " << ID1<<"("<<PartiTag[ID1].first<<","<<PartiTag[ID1].second << ") " << ID2<<"("<<PartiTag[ID2].first<<","<<PartiTag[ID2].second << ") " << oldW << " " << newW << endl;
+                    }
+                }
+
+                cout<<"Batch "<<u<<" : "<<wBatch.size()<<endl;
+                updateNumSum+=wBatch.size();
+                int a=1953,b=1204;
+                a=258,b=2552;
+//                if(algoChoice==H2H){
+//                    cout<<"Before update. "<<a<<" "<<b<<" "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+////                    QueryDebug(a,b);
+//                }else if(algoChoice==CH){
+//                    cout<<"Before update. "<<a<<" "<<b<<" "<<QueryPCH(a,b,Trees)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+//                }else if(algoChoice==PLL){
+//                    cout<<"Before update. "<<a<<" "<<b<<" "<<QueryPPLL(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+//                }
+
+//                int b1=112883,b2=228736;
+//                cout<<"Before update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                int d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+//                DijkstraPath(a,b,Neighbor);
+                tt.start();
+                if(algoChoice==CH){
+                    if(PSPStrategy==PreBoundary){
+                        PCHBatchUpdateEdgeInsertPre(wBatch, u, runT1);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PCHBatchUpdateEdgeInsert(wBatch, u, runT1);
+                    }
+                }else if(algoChoice==H2H){
+                    if(PSPStrategy==PreBoundary){
+                        PH2HBatchUpdateEdgeInsertPre(wBatch, u, runT1);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PH2HBatchUpdateEdgeInsert(wBatch, u, runT1);
+                    }
+                }else if(algoChoice==PLL){
+                    if(PSPStrategy==PreBoundary){
+                        PPLLBatchUpdateEdgeInsertPre(wBatch, u, runT1);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PPLLBatchUpdateEdgeInsert(wBatch, u, runT1);
+                    }
+                }
+//                if(algoChoice==H2H){
+//                    cout<<"After update. "<<a<<" "<<b<<" "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+//                }else if(algoChoice==CH){
+//                    cout<<"After update. "<<a<<" "<<b<<" "<<QueryPCH(a,b,Trees)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+//                }else if(algoChoice==PLL){
+//                    cout<<"After update. "<<a<<" "<<b<<" "<<QueryPPLL(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+//                }
+//                cout<<"After update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+                tt.stop();
+                runT1+=tt.GetRuntime();
+                cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
+                if(ifDebug){
+                    CorrectnessCheck(100);
+                }
+            }
+            cout<<"Edge insertion. Average batch update time: "<<runT1/batchNum<<" s; single edge update time: "<<runT1/updateNumSum<<" s."<<endl;
+            break;
+        }
+        case VertexInsertion:{
+            cout<<"Update type: Vertex insertion"<<endl;
+            updateNumSum=0;
+            // Vertex insertion
+            for(int u=0;u<batchNum;++u){
+                wBatch.clear();
+                for(int i=0;i<batchSize;++i){
+                    update_i=u*batchSize+i;
+                    ID1 = updateData[update_i].first.first;
+                    ID2 = updateData[update_i].first.second;
+                    if(PartiTag[ID1].first!=PartiTag[ID2].first){
+                        continue;
+                    }
+                    oldW = INF;
+                    newW = updateData[update_i].second;
+                    wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+                    if (ifDebug) {
+                        cout << "Batch " << u << ": " << ID1<<"("<<NodeOrder[ID1]<<","<<PartiTag[ID1].first<<","<<PartiTag[ID1].second << ") " << ID2<<"("<<NodeOrder[ID2]<<","<<PartiTag[ID2].first<<","<<PartiTag[ID2].second << ") " << oldW << " " << newW << endl;
+                    }
+                }
+
+                cout<<"Batch "<<u<<" : "<<wBatch.size()<<endl;
+
+                int a=258,b=2552;
+                a=10,b=768;
+//                cout<<"Before update. "<<a<<" "<<b<<" "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<","<<Dijkstra(b,a,Neighbor)<<")"<<endl;
+//                int b1=6480,b2=774;
+//                cout<<"Before update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                int d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+//                DijkstraPath(a,b,Neighbor);
+//                QueryDebug(a,b);
+
+
+                updateNumSum+=wBatch.size();
+                tt.start();
+                if(algoChoice==CH){
+                    if(PSPStrategy==PreBoundary){
+                        PCHBatchUpdateVertexInsertPre(wBatch, u, runT1);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PCHBatchUpdateVertexInsert(wBatch, u, runT1);
+                    }
+                }else if(algoChoice==H2H){
+                    if(PSPStrategy==PreBoundary){
+                        PH2HBatchUpdateVertexInsertPre(wBatch, u, runT1);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PH2HBatchUpdateVertexInsert(wBatch, u, runT1);
+                    }
+                }else if(algoChoice==PLL){
+                    if(PSPStrategy==PreBoundary){
+                        PPLLBatchUpdateVertexInsertPre(wBatch, u, runT1);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PPLLBatchUpdateVertexInsert(wBatch, u, runT1);
+                    }
+                }
+//                cout<<"After update. "<<a<<" "<<b<<" "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<","<<Dijkstra(b,a,Neighbor)<<")"<<endl;
+//                cout<<"After update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+                tt.stop();
+                runT1+=tt.GetRuntime();
+                cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
+                if(ifDebug){
+                    CorrectnessCheck(100);
+                }
+            }
+            cout<<"Vertex insertion. Average batch update time: "<<runT1/batchNum<<" s; single edge update time: "<<runT1/updateNumSum<<" s."<<endl;
+            break;
+        }
+        case EdgeDeletion:{
+            // Edge deletion
+            cout<<"Update type: Edge deletion"<<endl;
+            updateNumSum=0;
+            for(int u=0;u<batchNum;++u){
+                wBatch.clear();
+                for(int i=0;i<batchSize;++i){
+                    update_i=u*batchSize+i;
+                    ID1 = updateData[update_i].first.first;
+                    ID2 = updateData[update_i].first.second;
+                    oldW = updateData[update_i].second;
+                    bool ifFind=false;
+                    for(int j=0;j<Neighbor[ID1].size();++j){
+                        if(Neighbor[ID1][j].first==ID2){
+                            oldW=Neighbor[ID1][j].second; ifFind=true; break;
+                        }
+                    }
+                    if(!ifFind) {
+                        cout<<"Not found edge. "<<ID1<<" "<<ID2<<endl; exit(1);
+                    }
+                    newW = INF;
+                    if(algoChoice==PLL){
+                        newW = maxWeight*2;
+                    }
+
+                    wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+                    if (ifDebug) {
+                        cout << "Batch " << u << ": " << ID1<<"("<<PartiTag[ID1].first<<","<<PartiTag[ID1].second << ") " << ID2<<"("<<PartiTag[ID2].first<<","<<PartiTag[ID2].second << ") " << oldW << " " << newW << endl;
+                    }
+                }
+                cout << "Batch " << u << ": " << wBatch.size() << endl;
+                updateNumSum+=wBatch.size();
+                int a=50280,b=234828;
+                a=770,b=835;
+//                cout<<"Before update. "<<a<<"("<<PartiTag[a].first<<","<<PartiTag[a].second <<","<<NodeOrder[a]<<") "<<b<<"("<<PartiTag[b].first<<","<<PartiTag[b].second <<","<<NodeOrder[b]<<") "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+//                for(int i=0;i<Tree[rank[a]].vert.size();i++) {
+//                    if (Tree[rank[a]].vert[i].first == b) {
+//                        cout<< a<<" "<<b<<" "<< NeighborsOverlay[a][b]<<" "<< Tree[rank[a]].vert[i].second.first<<endl;
+//                        break;
+//                    }
+//                }
+//                int b1=112883,b2=228736;
+//                cout<<"Before update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                int d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+//                DijkstraPath(a,b,NeighborsOverlayV);
+//                DijkstraPath(a,b,Neighbor);
+                tt.start();
+                if(algoChoice==CH){
+                    if(PSPStrategy==PreBoundary){
+                        PCHBatchUpdateEdgeDeletePre(wBatch, u, runT2);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PCHBatchUpdateEdgeDelete(wBatch, u, runT2);
+                    }
+                }else if(algoChoice==H2H){
+                    if(PSPStrategy==PreBoundary){
+                        PH2HBatchUpdateEdgeDeletePre(wBatch, u, runT2);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PH2HBatchUpdateEdgeDelete(wBatch, u, runT2);
+                    }
+                }else if(algoChoice==PLL){
+                    if(PSPStrategy==PreBoundary){
+                        PPLLBatchUpdateEdgeDeletePre(wBatch);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PPLLBatchUpdateEdgeDelete(wBatch);
+                    }
+                }
+                tt.stop();
+                runT2+=tt.GetRuntime();
+//                cout<<"After update. "<<a<<" "<<b<<" "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+//                cout<<"After update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+//                DijkstraPath(a,b,NeighborsOverlayV);
+                cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
+                if(ifDebug){
+                    CorrectnessCheck(100);
+                }
+            }
+            cout<<"Edge deletion. Average batch update time: "<<runT2/batchNum<<" s; single edge update time: "<<runT2/updateNumSum<<" s."<<endl;
+            break;
+        }
+        case VertexDeletion:{
+            // Vertex deletion
+            cout<<"Update type: Vertex deletion"<<endl;
+            updateNumSum=0;
+            set<int> deletedVertex;
+            update_i=0;
+//            for(int u=36;u<batchNum;++u){
+            for(int u=0;u<batchNum;++u){
+                wBatch.clear();
+                for(int i=0;i<batchSize;++i){
+                    update_i=u*batchSize+i;
+                    ID1 = updateData[update_i].first.first;
+                    ID2 = updateData[update_i].first.second;
+//                    update_i++;
+                    if(Neighbor[ID1].size()>Neighbor[ID2].size()){
+                        int temp=ID1;
+                        ID1=ID2, ID2=temp;
+                    }
+//                    if(deletedVertex.find(ID1)!=deletedVertex.end()){//if found
+                    if(deletedVertex.find(ID1)!=deletedVertex.end() || PartiTag[ID1].second){//if found or ID1 is boundary vertex
+//                        cout<<"Illicit deletion. "<<ID1<<endl;
+//                        i--;
+                        continue;
+                    }
+                    deletedVertex.insert(ID1);
+                    for(int j=0;j<Neighbor[ID1].size();++j){
+                        ID2 = Neighbor[ID1][j].first;
+                        oldW = Neighbor[ID1][j].second;
+                        newW = INF;
+                        if(algoChoice==PLL){
+                            newW=maxWeight*2;
+                        }
+                        wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
+                        if (ifDebug) {
+                            cout << "Batch " << u << ": " << ID1<<"("<<PartiTag[ID1].first<<","<<PartiTag[ID1].second <<","<<NodeOrder[ID1] <<") " << ID2<<"("<<PartiTag[ID2].first<<","<<PartiTag[ID2].second <<","<<NodeOrder[ID2]<< ") " << oldW << " " << newW << endl;
+                        }
+                    }
+
+
+                }
+                cout << "Batch " << u << ": " << wBatch.size() << endl;
+
+                int a=5182,b=7985;
+                a=7984,b=7988;
+//                cout<<"Before update. "<<a<<"("<<PartiTag[a].first<<","<<PartiTag[a].second <<","<<NodeOrder[a]<<") "<<b<<"("<<PartiTag[b].first<<","<<PartiTag[b].second <<","<<NodeOrder[b]<<") "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+//                for(int i=0;i<Tree[rank[a]].vert.size();i++) {
+//                    if (Tree[rank[a]].vert[i].first == b) {
+//                        cout<< a<<" "<<b<<" "<< NeighborsOverlay[a][b]<<" "<< Tree[rank[a]].vert[i].second.first<<endl;
+//                        break;
+//                    }
+//                }
+//                int b1=112883,b2=228736;
+//                cout<<"Before update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                int d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+//                DijkstraPath(a,b,NeighborsOverlayV);
+//                DijkstraPath(a,b,Neighbor);
+
+                updateNumSum+=wBatch.size();
+                tt.start();
+                if(algoChoice==CH){
+                    if(PSPStrategy==PreBoundary){
+                        PCHBatchUpdateIncPre(wBatch, u, runT2);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PCHBatchUpdateInc(wBatch, u, runT2);
+                    }
+                }else if(algoChoice==H2H){
+                    if(PSPStrategy==PreBoundary){
+                        PH2HBatchUpdateEdgeDeletePre(wBatch, u, runT2);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PH2HBatchUpdateEdgeDelete(wBatch, u, runT2);
+                    }
+                }else if(algoChoice==PLL){
+                    if(PSPStrategy==PreBoundary){
+                        PPLLBatchUpdateIncPre(wBatch);
+                    }else if(PSPStrategy==NoBoundary || PSPStrategy==PostBoundary){
+                        PPLLBatchUpdateInc(wBatch);
+                    }
+                }
+                tt.stop();
+//                cout<<"After update. "<<a<<" "<<b<<" "<<QueryPH2H(a,b)<<"("<<Dijkstra(a,b,Neighbor)<<")"<<endl;
+//                cout<<"After update. "<<b1<<" "<<b2<<" "<<QueryPPLL(b1,b2)<<"("<<Dijkstra(b1,b2,NeighborsOverlayV)<<","<<Dijkstra(b1,b2,Neighbor)<<")"<<endl;
+//                d_12=QueryOverlayPLL(b1,b2), dDijk_s=Dijkstra(a,b1,Neighbor), dDijk_12=Dijkstra(b1,b2,Neighbor), dDijk_t=Dijkstra(b2,b,Neighbor);
+//                cout<<a<<" "<<b1<<"("<<NodeOrder[b1]<<","<<PartiTag[b1].first<<") "<<b2<<"("<<NodeOrder[b2]<<","<<PartiTag[b2].first<<") "<<b<<" : "<<QueryPPLL(a,b1)<<" "<<d_12<<" "<<QueryPPLL(b2,b)<<" ; "<<dDijk_s<<" "<<dDijk_12<<"("<<DijkstraCore(b1,b2)<<") "<<dDijk_t<<endl;
+//                DijkstraPath(a,b,NeighborsOverlayV);
+                runT2+=tt.GetRuntime();
+                cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
+                if(ifDebug){
+                    CorrectnessCheck(100);
+                }
+            }
+            cout<<"Vertex Deletion. Average batch update time: "<<runT2/batchNum<<" s; single edge update time: "<<runT2/updateNumSum<<" s."<<endl;
             break;
         }
         default:{
@@ -2344,6 +3047,227 @@ void Graph::IndexMaintenance(int updateType, int updateSize) {
         }
 
     }
+}
+
+void Graph::PCHBatchUpdateEdgeInsert(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    int a,b,newW;
+    for(int k=0;k<wBatch.size();k++) {
+        a = wBatch[k].first.first;
+        b = wBatch[k].first.second;
+        newW = wBatch[k].second.second;
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][i].second;
+                exit(1);
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][i].second;
+                exit(1);
+            }
+        }
+
+        Neighbor[a].emplace_back(b,newW);
+        Neighbor[b].emplace_back(a,newW);
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert(wBatch[k]);
+            }else{
+                updateSCTrue.insert(wBatch[k]);
+            }
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(wBatch[k]);
+        }
+    }
+
+    tt2.start();
+    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::EdgeInsertPartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), false, boost::ref(updatedSCs[pid]) ));
+//            cout<<"partition "<<pid<<endl;
+//            EdgeInsertPartiBatchUpdateCheckCH(pid, it->second, overlayBatch, false, updatedSCs[pid]);
+        }
+        thread.join_all();
+    }
+
+    int updateSCSize=0;
+    for(auto it1=partiBatch.begin();it1!=partiBatch.end();++it1){
+        int pid=it1->first;
+        vector<int> Bid=BoundVertex[pid];
+        //check the boundary edge within partition
+        int bid1,bid2,olddis,newdis;
+        for(auto it=updatedSCs[pid].begin();it!=updatedSCs[pid].end();++it){
+            bid1=it->first.first, bid2=it->first.second; newdis=it->second;
+            updateSCSize++;
+            if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
+                olddis=NeighborsOverlay[bid1][bid2];
+            }
+            else{//if not found
+                olddis=INF;
+//                cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
+            }
+
+            if(newdis<olddis){
+//            cout<<bid1<<" "<<bid2<<" "<<olddis<<" "<<newdis<<endl;
+//                NeighborsOverlay[bid1][bid2]=newdis;
+//                NeighborsOverlay[bid2][bid1]=newdis;
+//                sm->wait();
+                if(updateSCTrue.find(make_pair(bid1,bid2))==updateSCTrue.end()){
+                    updateSCTrue.insert({make_pair(bid1,bid2), make_pair(olddis,newdis)});
+                }else if(updateSCTrue[make_pair(bid1,bid2)].second>newdis){//if found and newdis is smaller
+                    cout<<"More than one supportive vertices. "<<bid1<<" "<<bid2<<" "<<updateSCTrue[make_pair(bid1,bid2)].second<<" "<<newdis<<endl;
+                    updateSCTrue[make_pair(bid1,bid2)].second=newdis;
+                }
+//                sm->notify();
+            }
+        }
+    }
+//    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<<updateSCSize<<endl;
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatchInsert;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        a=it->first.first, b=it->first.second; newW=it->second.second;
+        if(NeighborsOverlay[a].find(b) == NeighborsOverlay[a].end()){//if not found
+            cout<<"Not found overlay edge "<<a<<" "<<b<<" "<<newW<<endl;
+            overlayBatchInsert.emplace_back(it->first,it->second);
+        }else{
+            overlayBatch.emplace_back(it->first,it->second);//weightOverlay collect the changed edges on overlay graph
+        }
+
+    }
+
+    if(!overlayBatchInsert.empty()){
+        cout<<"OverlayBatchInsert size: "<<overlayBatchInsert.size()<<endl;
+        EdgeInsertOverlayBatchCH(overlayBatchInsert,NeighborsOverlay,Tree,rank,heightMax);
+    }
+    if(!overlayBatch.empty()){
+        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,false);
+    }
+
+
+    // repair the partition index
+    if(PSPStrategy>=PostBoundary){
+        tt2.start();
+        Repair_PartiIndex(true, false, partiBatch);//post
+        tt2.stop();
+
+    }
+
+    tt.stop();
+
+}
+
+void Graph::PCHBatchUpdateEdgeInsertPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    int a,b,newW;
+    for(int k=0;k<wBatch.size();k++) {
+        a = wBatch[k].first.first;
+        b = wBatch[k].first.second;
+        newW = wBatch[k].second.second;
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][i].second;
+                exit(1);
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][i].second;
+                exit(1);
+            }
+        }
+
+        Neighbor[a].emplace_back(b,newW);
+        Neighbor[b].emplace_back(a,newW);
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert(wBatch[k]);
+            }else{
+                updateSCTrue.insert(wBatch[k]);
+            }
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(wBatch[k]);
+        }
+    }
+
+    tt2.start();
+    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+
+    AllPairBoundaryDisUpdate(true, false, partiBatch, updateSCTrue);
+
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::EdgeInsertPartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), false, boost::ref(updatedSCs[pid]) ));
+//            cout<<"partition "<<pid<<endl;
+//            EdgeInsertPartiBatchUpdateCheckCH(pid, it->second, overlayBatch, false, updatedSCs[pid]);
+        }
+        thread.join_all();
+    }
+
+
+//    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<<updateSCSize<<endl;
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatchInsert;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        a=it->first.first, b=it->first.second; newW=it->second.second;
+        if(NeighborsOverlay[a].find(b) == NeighborsOverlay[a].end()){//if not found
+            cout<<"Not found overlay edge "<<a<<" "<<b<<" "<<newW<<endl;
+            overlayBatchInsert.emplace_back(it->first,it->second);
+        }else{
+            overlayBatch.emplace_back(it->first,it->second);//weightOverlay collect the changed edges on overlay graph
+        }
+
+    }
+
+    if(!overlayBatchInsert.empty()){
+        cout<<"OverlayBatchInsert size: "<<overlayBatchInsert.size()<<endl;
+        EdgeInsertOverlayBatchCH(overlayBatchInsert,NeighborsOverlay,Tree,rank,heightMax);
+    }
+    if(!overlayBatch.empty()){
+        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,false);
+    }
+    tt.stop();
 }
 
 //function for throughput test of decrease update
@@ -2411,8 +3335,10 @@ void Graph::PCHBatchUpdateDec(vector<pair<pair<int, int>, pair<int, int>>> &wBat
             updateSCSize++;
             if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
                 olddis=NeighborsOverlay[bid1][bid2];
-            }else{//if not found
-                cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
+            }
+            else{//if not found
+                olddis=INF;
+//                cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
             }
 
             if(newdis<olddis){
@@ -2513,7 +3439,999 @@ void Graph::PCHBatchUpdateDecPre(vector<pair<pair<int, int>, pair<int, int>>> &w
     tt.stop();
 }
 
-//function for throughput test of decrease update
+//function for  update
+void Graph::PCHBatchUpdateVertexInsert(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    vector<int> newIDs;
+    int a,b,oldW,newW,pid;
+    for(int k=0;k<wBatch.size();k++) {
+        a = node_num;
+        if(NodeOrder[wBatch[k].first.first]<=NodeOrder[wBatch[k].first.second]){
+            b = wBatch[k].first.first;
+        }else{
+            b = wBatch[k].first.second;
+        }
+
+        oldW =wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+
+        newIDs.push_back(a);
+        vector<pair<vertex,int>> tempV;
+        tempV.emplace_back(b,newW);
+        Neighbor.emplace_back(tempV);
+        NeighborsParti.emplace_back(tempV);
+        Neighbor[b].emplace_back(a,newW);
+        NeighborsParti[b].emplace_back(a,newW);
+        pid=PartiTag[b].first;
+        PartiTag.emplace_back(pid,0);//assert to the partition that b belongs
+        for(int i=0;i<NodeOrder.size();++i){
+            NodeOrder[i]=NodeOrder[i]+1;
+
+        }
+        NodeOrder.push_back(0);
+        vNodeOrder.insert(vNodeOrder.begin(),a);
+//        Labels.emplace_back(unordered_map<int,int>());
+        IDMap.push_back(PartiVertex[pid].size());
+        PartiVertex[pid].emplace_back(a);
+
+        if(PSPStrategy>=PostBoundary){
+            unordered_map<vertex,int> tempMap;
+            tempMap.insert({b,newW});
+            NeighborsPartiPost.emplace_back(tempMap);
+            NeighborsPartiPost[b].insert({a,newW});
+        }
+        node_num++;
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+//        cout<<a<<" "<<b<<" "<<oldW<<" "<<newW<<endl;
+        if(pid1 != pid2){
+            cout<<"Wrong. "<<pid1<<" "<<pid2<<endl; exit(1);
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(make_pair(a,b),make_pair(oldW,newW));
+        }
+    }
+    NodeOrder_=NodeOrder;
+    cout<<"updateSCTrue size before partition update: "<<updateSCTrue.size()<<endl;
+    tt2.start();
+    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+
+    /// Step 1: insert vertex and its first edge
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::VertexInsertPartiBatchUpdateCH, this, pid, boost::ref(it->second)));
+//            cout<<"partition "<<pid<<endl;
+//            VertexInsertPartiBatchUpdateCH(pid, boost::ref(it->second));
+        }
+        thread.join_all();
+    }
+
+    /// Step 2: insert additional edges
+    updateSCTrue.clear();
+    partiBatch.clear();
+    overlayBatch.clear();
+    for(int k=0;k<wBatch.size();k++) {
+        a = newIDs[k];
+        if(NodeOrder[wBatch[k].first.first]>NodeOrder[wBatch[k].first.second]){
+            b = wBatch[k].first.first;
+        }else{
+            b = wBatch[k].first.second;
+        }
+        oldW = wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][i].second<<endl;
+                exit(1);
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][i].second<<endl;
+                exit(1);
+            }
+        }
+//        cout<<"new edge 2. "<<a<<" "<<b<<" "<<newW<<endl;
+        Neighbor[a].emplace_back(b,newW);
+        Neighbor[b].emplace_back(a,newW);
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(INF,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(INF,newW)});
+            }
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(make_pair(a,b),make_pair(oldW,newW));
+        }
+    }
+//    cout<<"overlayBatch size before partition update: "<<overlayBatch.size()<<endl;
+    vUpdated.assign(node_num, false);
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::EdgeInsertPartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), false, boost::ref(updatedSCs[pid])));
+//            cout<<"partition "<<pid<<endl;
+//            EdgeInsertPartiBatchUpdateCheck(pid, it->second, overlayBatch, true, updatedSCs[pid]);
+        }
+        thread.join_all();
+    }
+    int updateSCSize=0;
+    for(auto it1=partiBatch.begin();it1!=partiBatch.end();++it1){
+        int pid=it1->first;
+        vector<int> Bid=BoundVertex[pid];
+        //check the boundary edge within partition
+        int bid1,bid2,olddis,newdis;
+        for(auto it=updatedSCs[pid].begin();it!=updatedSCs[pid].end();++it){
+            bid1=it->first.first, bid2=it->first.second; newdis=it->second;
+            updateSCSize++;
+            if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
+                olddis=NeighborsOverlay[bid1][bid2];
+            }else{//if not found
+                cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
+            }
+
+            if(newdis<olddis){
+//            cout<<bid1<<" "<<bid2<<" "<<olddis<<" "<<newdis<<endl;
+//                NeighborsOverlay[bid1][bid2]=newdis;
+//                NeighborsOverlay[bid2][bid1]=newdis;
+//                sm->wait();
+                if(updateSCTrue.find(make_pair(bid1,bid2))==updateSCTrue.end()){
+                    updateSCTrue.insert({make_pair(bid1,bid2), make_pair(olddis,newdis)});
+                }else if(updateSCTrue[make_pair(bid1,bid2)].second>newdis){//if found and newdis is smaller
+                    cout<<"More than one supportive vertices. "<<bid1<<" "<<bid2<<" "<<updateSCTrue[make_pair(bid1,bid2)].second<<" "<<newdis<<endl;
+                    updateSCTrue[make_pair(bid1,bid2)].second=newdis;
+                }
+//                sm->notify();
+            }
+        }
+    }
+//    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<<updateSCSize<<endl;
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatchInsert;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        a=it->first.first, b=it->first.second; newW=it->second.second;
+        if(NeighborsOverlay[a].find(b) == NeighborsOverlay[a].end()){//if not found
+            cout<<"Not found overlay edge "<<a<<" "<<b<<" "<<newW<<endl;
+            overlayBatchInsert.emplace_back(it->first,it->second);
+        }else{
+            overlayBatch.emplace_back(it->first,it->second);//weightOverlay collect the changed edges on overlay graph
+        }
+
+    }
+
+    if(!overlayBatchInsert.empty()){
+        cout<<"OverlayBatchInsert size: "<<overlayBatchInsert.size()<<endl;
+        EdgeInsertOverlayBatch(overlayBatchInsert,NeighborsOverlay,Tree,rank,heightMax,false);
+    }
+
+    if(!overlayBatch.empty()){
+        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,false);
+    }
+    tt2.stop();
+    // repair the partition index
+    if(PSPStrategy>=PostBoundary){
+        tt2.start();
+        Repair_PartiIndex(true, false, partiBatch);//post
+        tt2.stop();
+
+    }
+
+    tt.stop();
+
+}
+
+//function for edge insertion update
+void Graph::PCHBatchUpdateVertexInsertPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    vector<int> newIDs;
+    int a,b,oldW,newW,pid;
+    for(int k=0;k<wBatch.size();k++) {
+        a = node_num;
+        if(NodeOrder[wBatch[k].first.first]<=NodeOrder[wBatch[k].first.second]){
+            b = wBatch[k].first.first;
+        }else{
+            b = wBatch[k].first.second;
+        }
+
+        oldW =wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+
+        newIDs.push_back(a);
+        vector<pair<vertex,int>> tempV;
+        tempV.emplace_back(b,newW);
+        Neighbor.emplace_back(tempV);
+        NeighborsParti.emplace_back(tempV);
+        Neighbor[b].emplace_back(a,newW);
+        NeighborsParti[b].emplace_back(a,newW);
+        pid=PartiTag[b].first;
+        PartiTag.emplace_back(pid,0);//assert to the partition that b belongs
+        for(int i=0;i<NodeOrder.size();++i){
+            NodeOrder[i]=NodeOrder[i]+1;
+
+        }
+        NodeOrder.push_back(0);
+        vNodeOrder.insert(vNodeOrder.begin(),a);
+//        Labels.emplace_back(unordered_map<int,int>());
+        IDMap.push_back(PartiVertex[pid].size());
+        PartiVertex[pid].emplace_back(a);
+
+        node_num++;
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+//        cout<<a<<" "<<b<<" "<<oldW<<" "<<newW<<endl;
+        if(pid1 != pid2){
+            cout<<"Wrong. "<<pid1<<" "<<pid2<<endl; exit(1);
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(make_pair(a,b),make_pair(oldW,newW));
+        }
+    }
+    NodeOrder_=NodeOrder;
+    cout<<"updateSCTrue size before partition update: "<<updateSCTrue.size()<<endl;
+    tt2.start();
+//    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+
+    /// Step 1: insert vertex and its first edge
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::VertexInsertPartiBatchUpdateCH, this, pid, boost::ref(it->second)));
+//            cout<<"partition "<<pid<<endl;
+//            VertexInsertPartiBatchUpdateH2H(pid, boost::ref(it->second));
+        }
+        thread.join_all();
+    }
+
+    /// Step 2: insert additional edges
+    updateSCTrue.clear();
+    partiBatch.clear();
+    overlayBatch.clear();
+    for(int k=0;k<wBatch.size();k++) {
+        a = newIDs[k];
+        if(NodeOrder[wBatch[k].first.first]>NodeOrder[wBatch[k].first.second]){
+            b = wBatch[k].first.first;
+        }else{
+            b = wBatch[k].first.second;
+        }
+        oldW = wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][i].second<<endl;
+                exit(1);
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][i].second<<endl;
+                exit(1);
+            }
+        }
+//        cout<<"new edge 2. "<<a<<" "<<b<<" "<<newW<<endl;
+        Neighbor[a].emplace_back(b,newW);
+        Neighbor[b].emplace_back(a,newW);
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(INF,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(INF,newW)});
+            }
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(make_pair(a,b),make_pair(oldW,newW));
+        }
+    }
+    AllPairBoundaryDisUpdate(true, false, partiBatch, updateSCTrue);
+//    cout<<"overlayBatch size before partition update: "<<overlayBatch.size()<<endl;
+    vUpdated.assign(node_num, false);
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::EdgeInsertPartiBatchCH, this, pid, boost::ref(it->second), boost::ref(NeighborsParti), boost::ref(Trees[pid]), boost::ref(ranks[pid]), heightMaxs[pid], boost::ref(updatedSCs[pid])));
+//            (int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, vector<pair<pair<int,int>,int>>& updatedSC)
+//            cout<<"partition "<<pid<<endl;
+//            EdgeInsertPartiBatchUpdateCheck(pid, it->second, overlayBatch, true, updatedSCs[pid]);
+        }
+        thread.join_all();
+    }
+
+//    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<<updateSCSize<<endl;
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatchInsert;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        a=it->first.first, b=it->first.second; newW=it->second.second;
+        if(NeighborsOverlay[a].find(b) == NeighborsOverlay[a].end()){//if not found
+            cout<<"Not found overlay edge "<<a<<" "<<b<<" "<<newW<<endl;
+            overlayBatchInsert.emplace_back(it->first,it->second);
+        }else{
+            overlayBatch.emplace_back(it->first,it->second);//weightOverlay collect the changed edges on overlay graph
+        }
+
+    }
+
+    if(!overlayBatchInsert.empty()){
+        cout<<"OverlayBatchInsert size: "<<overlayBatchInsert.size()<<endl;
+        EdgeInsertOverlayBatch(overlayBatchInsert,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+
+    if(!overlayBatch.empty()){
+        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+    tt2.stop();
+    tt.stop();
+}
+
+//function for  update
+void Graph::PH2HBatchUpdateVertexInsert(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    vector<int> newIDs;
+    int a,b,oldW,newW,pid;
+    for(int k=0;k<wBatch.size();k++) {
+        a = node_num;
+        if(NodeOrder[wBatch[k].first.first]<=NodeOrder[wBatch[k].first.second]){
+            b = wBatch[k].first.first;
+        }else{
+            b = wBatch[k].first.second;
+        }
+
+        oldW =wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+
+        newIDs.push_back(a);
+        vector<pair<vertex,int>> tempV;
+        tempV.emplace_back(b,newW);
+        Neighbor.emplace_back(tempV);
+        NeighborsParti.emplace_back(tempV);
+        Neighbor[b].emplace_back(a,newW);
+        NeighborsParti[b].emplace_back(a,newW);
+        pid=PartiTag[b].first;
+        PartiTag.emplace_back(pid,0);//assert to the partition that b belongs
+        for(int i=0;i<NodeOrder.size();++i){
+            NodeOrder[i]=NodeOrder[i]+1;
+
+        }
+        NodeOrder.push_back(0);
+        vNodeOrder.insert(vNodeOrder.begin(),a);
+//        Labels.emplace_back(unordered_map<int,int>());
+        IDMap.push_back(PartiVertex[pid].size());
+        PartiVertex[pid].emplace_back(a);
+
+        if(PSPStrategy>=PostBoundary){
+            unordered_map<vertex,int> tempMap;
+            tempMap.insert({b,newW});
+            NeighborsPartiPost.emplace_back(tempMap);
+            NeighborsPartiPost[b].insert({a,newW});
+        }
+        node_num++;
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+//        cout<<a<<" "<<b<<" "<<oldW<<" "<<newW<<endl;
+        if(pid1 != pid2){
+            cout<<"Wrong. "<<pid1<<" "<<pid2<<endl; exit(1);
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(make_pair(a,b),make_pair(oldW,newW));
+        }
+    }
+    NodeOrder_=NodeOrder;
+    cout<<"updateSCTrue size before partition update: "<<updateSCTrue.size()<<endl;
+    tt2.start();
+    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+
+    /// Step 1: insert vertex and its first edge
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::VertexInsertPartiBatchUpdateH2H, this, pid, boost::ref(it->second)));
+//            cout<<"partition "<<pid<<endl;
+//            VertexInsertPartiBatchUpdateH2H(pid, boost::ref(it->second));
+        }
+        thread.join_all();
+    }
+
+    /// Step 2: insert additional edges
+    updateSCTrue.clear();
+    partiBatch.clear();
+    overlayBatch.clear();
+    for(int k=0;k<wBatch.size();k++) {
+        a = newIDs[k];
+        if(NodeOrder[wBatch[k].first.first]>NodeOrder[wBatch[k].first.second]){
+            b = wBatch[k].first.first;
+        }else{
+            b = wBatch[k].first.second;
+        }
+        oldW = wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][i].second<<endl;
+                exit(1);
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][i].second<<endl;
+                exit(1);
+            }
+        }
+//        cout<<"new edge 2. "<<a<<" "<<b<<" "<<newW<<endl;
+        Neighbor[a].emplace_back(b,newW);
+        Neighbor[b].emplace_back(a,newW);
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(INF,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(INF,newW)});
+            }
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(make_pair(a,b),make_pair(oldW,newW));
+        }
+    }
+//    cout<<"overlayBatch size before partition update: "<<overlayBatch.size()<<endl;
+    vUpdated.assign(node_num, false);
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::EdgeInsertPartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), true, boost::ref(updatedSCs[pid])));
+//            cout<<"partition "<<pid<<endl;
+//            EdgeInsertPartiBatchUpdateCheck(pid, it->second, overlayBatch, true, updatedSCs[pid]);
+        }
+        thread.join_all();
+    }
+    int updateSCSize=0;
+    for(auto it1=partiBatch.begin();it1!=partiBatch.end();++it1){
+        int pid=it1->first;
+        vector<int> Bid=BoundVertex[pid];
+        //check the boundary edge within partition
+        int bid1,bid2,olddis,newdis;
+        for(auto it=updatedSCs[pid].begin();it!=updatedSCs[pid].end();++it){
+            bid1=it->first.first, bid2=it->first.second; newdis=it->second;
+            updateSCSize++;
+            if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
+                olddis=NeighborsOverlay[bid1][bid2];
+            }else{//if not found
+                cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
+            }
+
+            if(newdis<olddis){
+//            cout<<bid1<<" "<<bid2<<" "<<olddis<<" "<<newdis<<endl;
+//                NeighborsOverlay[bid1][bid2]=newdis;
+//                NeighborsOverlay[bid2][bid1]=newdis;
+//                sm->wait();
+                if(updateSCTrue.find(make_pair(bid1,bid2))==updateSCTrue.end()){
+                    updateSCTrue.insert({make_pair(bid1,bid2), make_pair(olddis,newdis)});
+                }else if(updateSCTrue[make_pair(bid1,bid2)].second>newdis){//if found and newdis is smaller
+                    cout<<"More than one supportive vertices. "<<bid1<<" "<<bid2<<" "<<updateSCTrue[make_pair(bid1,bid2)].second<<" "<<newdis<<endl;
+                    updateSCTrue[make_pair(bid1,bid2)].second=newdis;
+                }
+//                sm->notify();
+            }
+        }
+    }
+//    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<<updateSCSize<<endl;
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatchInsert;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        a=it->first.first, b=it->first.second; newW=it->second.second;
+        if(NeighborsOverlay[a].find(b) == NeighborsOverlay[a].end()){//if not found
+            cout<<"Not found overlay edge "<<a<<" "<<b<<" "<<newW<<endl;
+            overlayBatchInsert.emplace_back(it->first,it->second);
+        }else{
+            overlayBatch.emplace_back(it->first,it->second);//weightOverlay collect the changed edges on overlay graph
+        }
+
+    }
+
+    if(!overlayBatchInsert.empty()){
+        cout<<"OverlayBatchInsert size: "<<overlayBatchInsert.size()<<endl;
+        EdgeInsertOverlayBatch(overlayBatchInsert,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+
+    if(!overlayBatch.empty()){
+        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+    tt2.stop();
+    // repair the partition index
+    if(PSPStrategy>=PostBoundary){
+        tt2.start();
+        Repair_PartiIndex(true, false, partiBatch);//post
+        tt2.stop();
+
+    }
+
+    tt.stop();
+
+}
+
+//function for edge insertion update
+void Graph::PH2HBatchUpdateVertexInsertPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    vector<int> newIDs;
+    int a,b,oldW,newW,pid;
+    for(int k=0;k<wBatch.size();k++) {
+        a = node_num;
+        if(NodeOrder[wBatch[k].first.first]<=NodeOrder[wBatch[k].first.second]){
+            b = wBatch[k].first.first;
+        }else{
+            b = wBatch[k].first.second;
+        }
+
+        oldW =wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+
+        newIDs.push_back(a);
+        vector<pair<vertex,int>> tempV;
+        tempV.emplace_back(b,newW);
+        Neighbor.emplace_back(tempV);
+        NeighborsParti.emplace_back(tempV);
+        Neighbor[b].emplace_back(a,newW);
+        NeighborsParti[b].emplace_back(a,newW);
+        pid=PartiTag[b].first;
+        PartiTag.emplace_back(pid,0);//assert to the partition that b belongs
+        for(int i=0;i<NodeOrder.size();++i){
+            NodeOrder[i]=NodeOrder[i]+1;
+
+        }
+        NodeOrder.push_back(0);
+        vNodeOrder.insert(vNodeOrder.begin(),a);
+//        Labels.emplace_back(unordered_map<int,int>());
+        IDMap.push_back(PartiVertex[pid].size());
+        PartiVertex[pid].emplace_back(a);
+
+        node_num++;
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+//        cout<<a<<" "<<b<<" "<<oldW<<" "<<newW<<endl;
+        if(pid1 != pid2){
+            cout<<"Wrong. "<<pid1<<" "<<pid2<<endl; exit(1);
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(make_pair(a,b),make_pair(oldW,newW));
+        }
+    }
+    NodeOrder_=NodeOrder;
+    cout<<"updateSCTrue size before partition update: "<<updateSCTrue.size()<<endl;
+    tt2.start();
+    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+
+    /// Step 1: insert vertex and its first edge
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::VertexInsertPartiBatchUpdateH2H, this, pid, boost::ref(it->second)));
+//            cout<<"partition "<<pid<<endl;
+//            VertexInsertPartiBatchUpdateH2H(pid, boost::ref(it->second));
+        }
+        thread.join_all();
+    }
+
+    /// Step 2: insert additional edges
+    updateSCTrue.clear();
+    partiBatch.clear();
+    overlayBatch.clear();
+    for(int k=0;k<wBatch.size();k++) {
+        a = newIDs[k];
+        if(NodeOrder[wBatch[k].first.first]>NodeOrder[wBatch[k].first.second]){
+            b = wBatch[k].first.first;
+        }else{
+            b = wBatch[k].first.second;
+        }
+        oldW = wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][i].second<<endl;
+                exit(1);
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][i].second<<endl;
+                exit(1);
+            }
+        }
+//        cout<<"new edge 2. "<<a<<" "<<b<<" "<<newW<<endl;
+        Neighbor[a].emplace_back(b,newW);
+        Neighbor[b].emplace_back(a,newW);
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(INF,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(INF,newW)});
+            }
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(make_pair(a,b),make_pair(oldW,newW));
+        }
+    }
+    AllPairBoundaryDisUpdate(true, false, partiBatch, updateSCTrue);
+//    cout<<"overlayBatch size before partition update: "<<overlayBatch.size()<<endl;
+    vUpdated.assign(node_num, false);
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::EdgeInsertPartiBatchH2HPre, this, pid, boost::ref(it->second), boost::ref(NeighborsParti), boost::ref(Trees[pid]), boost::ref(ranks[pid]), heightMaxs[pid], true));
+//            cout<<"partition "<<pid<<endl;
+//            EdgeInsertPartiBatchUpdateCheck(pid, it->second, overlayBatch, true, updatedSCs[pid]);
+        }
+        thread.join_all();
+    }
+
+//    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<<updateSCSize<<endl;
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatchInsert;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        a=it->first.first, b=it->first.second; newW=it->second.second;
+        if(NeighborsOverlay[a].find(b) == NeighborsOverlay[a].end()){//if not found
+            cout<<"Not found overlay edge "<<a<<" "<<b<<" "<<newW<<endl;
+            overlayBatchInsert.emplace_back(it->first,it->second);
+        }else{
+            overlayBatch.emplace_back(it->first,it->second);//weightOverlay collect the changed edges on overlay graph
+        }
+
+    }
+
+    if(!overlayBatchInsert.empty()){
+        cout<<"OverlayBatchInsert size: "<<overlayBatchInsert.size()<<endl;
+        EdgeInsertOverlayBatch(overlayBatchInsert,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+
+    if(!overlayBatch.empty()){
+        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+    tt2.stop();
+    tt.stop();
+}
+
+//function for edge insertion update
+void Graph::PH2HBatchUpdateEdgeInsert(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    int a,b,newW;
+    for(int k=0;k<wBatch.size();k++) {
+        a = wBatch[k].first.first;
+        b = wBatch[k].first.second;
+        newW = wBatch[k].second.second;
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][i].second;
+                exit(1);
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][i].second;
+                exit(1);
+            }
+        }
+
+        Neighbor[a].emplace_back(b,newW);
+        Neighbor[b].emplace_back(a,newW);
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert(wBatch[k]);
+            }else{
+                updateSCTrue.insert(wBatch[k]);
+            }
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(wBatch[k]);
+        }
+    }
+    cout<<"updateSCTrue size before partition update: "<<updateSCTrue.size()<<endl;
+    tt2.start();
+    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+
+//    cout<<QueryPH2H(1204,2218)<<endl;
+//    cout<<Trees[7][ranks[7][IDMap[2218]]].pos[Trees[7][ranks[7][IDMap[2218]]].pos.size()-1]<<" "<<Trees[7][ranks[7][IDMap[2218]]].pos.back()<<" "<<Trees[7][ranks[7][IDMap[2218]]].pos.size()<<endl;
+//    cout<<Trees[7][ranks[7][IDMap[2218]]].height<<" "<<Trees[7][ranks[7][IDMap[2218]]].pa<<endl;
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::EdgeInsertPartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), true, boost::ref(updatedSCs[pid]) ));
+//            cout<<"partition "<<pid<<endl;
+//            EdgeInsertPartiBatchUpdateCheckCH(pid, boost::ref(it->second), boost::ref(overlayBatch), true, boost::ref(updatedSCs[pid]) );
+        }
+        thread.join_all();
+    }
+//    cout<<Trees[7][ranks[7][IDMap[2218]]].pos[Trees[7][ranks[7][IDMap[2218]]].pos.size()]<<" "<<Trees[7][ranks[7][IDMap[2218]]].pos.size()<<endl;
+//    cout<<"after parti update "<<QueryDebug(1204,2218)<<endl;
+//    for(int i=0;i<Trees[7][ranks[7][IDMap[1204]]].dis.size();++i){
+//        if(Trees[7][ranks[7][IDMap[1204]]].vAncestor[i]==2218){
+//            cout<<"Here. "<<Trees[7][ranks[7][IDMap[1204]]].dis[i]<<endl;
+//        }
+//    }
+    int updateSCSize=0;
+    for(auto it1=partiBatch.begin();it1!=partiBatch.end();++it1){
+        int pid=it1->first;
+        vector<int> Bid=BoundVertex[pid];
+        //check the boundary edge within partition
+        int bid1,bid2,olddis,newdis;
+        for(auto it=updatedSCs[pid].begin();it!=updatedSCs[pid].end();++it){
+            bid1=it->first.first, bid2=it->first.second; newdis=it->second;
+            updateSCSize++;
+            if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
+                olddis=NeighborsOverlay[bid1][bid2];
+            }else{//if not found
+                cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl;
+                exit(1);
+            }
+
+            if(newdis<olddis){
+//            cout<<bid1<<" "<<bid2<<" "<<olddis<<" "<<newdis<<endl;
+//                NeighborsOverlay[bid1][bid2]=newdis;
+//                NeighborsOverlay[bid2][bid1]=newdis;
+//                sm->wait();
+                if(updateSCTrue.find(make_pair(bid1,bid2))==updateSCTrue.end()){
+                    updateSCTrue.insert({make_pair(bid1,bid2), make_pair(olddis,newdis)});
+                }else if(updateSCTrue[make_pair(bid1,bid2)].second>newdis){//if found and newdis is smaller
+                    cout<<"More than one supportive vertices. "<<bid1<<" "<<bid2<<" "<<updateSCTrue[make_pair(bid1,bid2)].second<<" "<<newdis<<endl;
+                    updateSCTrue[make_pair(bid1,bid2)].second=newdis;
+                }
+//                sm->notify();
+            }
+        }
+    }
+//    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<<updateSCSize<<endl;
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatchInsert;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        a=it->first.first, b=it->first.second; newW=it->second.second;
+        if(NeighborsOverlay[a].find(b) == NeighborsOverlay[a].end()){//if not found
+            cout<<"Not found overlay edge "<<a<<" "<<b<<" "<<newW<<endl;
+            overlayBatchInsert.emplace_back(it->first,it->second);
+        }else{
+            overlayBatch.emplace_back(it->first,it->second);//weightOverlay collect the changed edges on overlay graph
+        }
+
+    }
+
+    if(!overlayBatchInsert.empty()){
+        cout<<"OverlayBatchInsert size: "<<overlayBatchInsert.size()<<endl;
+        EdgeInsertOverlayBatch(overlayBatchInsert,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+
+    if(!overlayBatch.empty()){
+        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+
+
+
+    tt2.stop();
+    // repair the partition index
+    if(PSPStrategy>=PostBoundary){
+        tt2.start();
+        Repair_PartiIndex(true, false, partiBatch);//post
+        tt2.stop();
+
+    }
+
+    tt.stop();
+
+}
+
+//function for edge insertion update
+void Graph::PH2HBatchUpdateEdgeInsertPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    int a,b,newW;
+    for(int k=0;k<wBatch.size();k++) {
+        a = wBatch[k].first.first;
+        b = wBatch[k].first.second;
+        newW = wBatch[k].second.second;
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][i].second;
+                exit(1);
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][i].second;
+                exit(1);
+            }
+        }
+
+        Neighbor[a].emplace_back(b,newW);
+        Neighbor[b].emplace_back(a,newW);
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert(wBatch[k]);
+            }else{
+                updateSCTrue.insert(wBatch[k]);
+            }
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(wBatch[k]);
+        }
+    }
+    cout<<"updateSCTrue size before partition update: "<<updateSCTrue.size()<<endl;
+    tt2.start();
+    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+
+    AllPairBoundaryDisUpdate(true, false, partiBatch, updateSCTrue);
+
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::EdgeInsertPartiBatchH2HPre, this, pid, boost::ref(it->second), boost::ref(NeighborsParti), boost::ref(Trees[pid]),boost::ref(ranks[pid]), heightMaxs[pid], true ));
+        }
+        thread.join_all();
+    }
+
+//    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<<updateSCSize<<endl;
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatchInsert;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        a=it->first.first, b=it->first.second; newW=it->second.second;
+        if(NeighborsOverlay[a].find(b) == NeighborsOverlay[a].end()){//if not found
+            cout<<"Not found overlay edge "<<a<<" "<<b<<" "<<newW<<endl;
+            overlayBatchInsert.emplace_back(it->first,it->second);
+        }else{
+            overlayBatch.emplace_back(it->first,it->second);//weightOverlay collect the changed edges on overlay graph
+        }
+
+    }
+
+    if(!overlayBatchInsert.empty()){
+        cout<<"OverlayBatchInsert size: "<<overlayBatchInsert.size()<<endl;
+        EdgeInsertOverlayBatch(overlayBatchInsert,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+
+    if(!overlayBatch.empty()){
+        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,true);
+    }
+    tt2.stop();
+    tt.stop();
+
+}
+
+//function for decrease update
 void Graph::PH2HBatchUpdateDec(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
     Timer tt;
     Timer tt2;
@@ -2578,8 +4496,15 @@ void Graph::PH2HBatchUpdateDec(vector<pair<pair<int, int>, pair<int, int>>> &wBa
             updateSCSize++;
             if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
                 olddis=NeighborsOverlay[bid1][bid2];
-            }else{//if not found
-                cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
+            }
+            else{//if not found
+                if(ifFullOpt){
+                    olddis=INF;
+                }
+                else{
+                    cout<<"1 Not found edge "<<bid1<<"("<<fullyConnected[bid1]<<") "<<bid2<<"("<<fullyConnected[bid2]<<") in overlay graph!"<<endl; exit(1);
+                }
+
             }
 
             if(newdis<olddis){
@@ -2603,13 +4528,13 @@ void Graph::PH2HBatchUpdateDec(vector<pair<pair<int, int>, pair<int, int>>> &wBa
     }
     if(!overlayBatch.empty()){
 //        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
-        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,false);
+        DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,true);
     }
 
 
 //    cout<<"algoQuery: PCH-No"<<endl;
 
-    DecreaseOverlayBatchLabel(Tree,rank,heightMax,ProBeginVertexSetOverlay,vertexIDChLOverlay);//vector<Node> &Tree, vector<int> &rank, int heightMax, vector<int> &ProBeginVertexSet, set<int> &vertexIDChL
+//    DecreaseOverlayBatchLabel(Tree,rank,heightMax,ProBeginVertexSetOverlay,vertexIDChLOverlay);//vector<Node> &Tree, vector<int> &rank, int heightMax, vector<int> &ProBeginVertexSet, set<int> &vertexIDChL
 
     if(!partiBatch.empty()){
         if(partiBatch.size()>threadnum){
@@ -2637,7 +4562,7 @@ void Graph::PH2HBatchUpdateDec(vector<pair<pair<int, int>, pair<int, int>>> &wBa
 
 }
 
-//function for throughput test of decrease update
+//function for decrease update
 void Graph::PH2HBatchUpdateDecPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
     Timer tt;
     Timer tt2;
@@ -2698,16 +4623,18 @@ void Graph::PH2HBatchUpdateDecPre(vector<pair<pair<int, int>, pair<int, int>>> &
     tt.stop();
 }
 
-//function for throughput test of increase update
+//function for increase update
 void Graph::PCHBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
     Timer tt;
     Timer tt2;
     tt.start();
     map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
     vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
     for(int k=0;k<wBatch.size();k++) {
         int a = wBatch[k].first.first;
         int b = wBatch[k].first.second;
+        int oldW = wBatch[k].second.first;
         int newW = wBatch[k].second.second;
         for(int i=0;i<Neighbor[a].size();i++){
             if(Neighbor[a][i].first==b){
@@ -2726,7 +4653,12 @@ void Graph::PCHBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBat
 
         int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
         if(pid1 != pid2){
-            overlayBatch.emplace_back(wBatch[k]);
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(oldW,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(oldW,newW)});
+            }
         }else{
             if(partiBatch.find(pid1) == partiBatch.end()){
                 partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
@@ -2748,12 +4680,142 @@ void Graph::PCHBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBat
         boost::thread_group thread;
         for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
             int pid=it->first;
-            thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchUpdateCheckCH, this, pid, boost::ref(it->second), boost::ref(overlayBatch), false, boost::ref(updatedSCs[pid]) ));
+            if(ifTreeOpt){
+                thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), false, boost::ref(updatedSCs[pid]) ));//with tree optimization
+//                cout<<"partition "<<pid<<endl;
+//                IncreasePartiBatchUpdateCheckCH(pid, it->second, overlayBatch, true, updatedSCs[pid]);
+            }else{
+                thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), false, boost::ref(updatedSCs[pid]) ));//without tree optimization
+            }
         }
         thread.join_all();
 
     }
+
+    int updateSCSize=0;
+    for(auto it1=partiBatch.begin();it1!=partiBatch.end();++it1){
+        int pid=it1->first;
+        vector<int> Bid=BoundVertex[pid];
+        //check the boundary edge within partition
+        int bid1,bid2,olddis,newdis;
+
+        for(auto it=updatedSCs[pid].begin();it!=updatedSCs[pid].end();++it){
+            bid1=it->first.first, bid2=it->first.second; newdis=it->second;
+            updateSCSize++;
+            if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
+                olddis=NeighborsOverlay[bid1][bid2];
+            }
+            else{//if not found
+//                olddis=INF;
+                if(ifTreeOpt && ifFullOpt){
+                    olddis=INF;
+                }else{
+                    cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
+                }
+
+            }
+//        cout<<pid<<": "<<bid1<<" "<<bid2<<" "<<olddis<<" "<<newdis<<endl;
+            if(newdis>olddis){//if '=', not problem; if '<', problem
+//                sm->wait();
+                if(updateSCTrue.find(make_pair(bid1,bid2))==updateSCTrue.end()){
+                    updateSCTrue.insert({make_pair(bid1,bid2), make_pair(olddis,newdis)});
+                }else if(updateSCTrue[make_pair(bid1,bid2)].second>newdis){//if found and newdis is smaller
+                    cout<<"More than one supportive vertices. "<<bid1<<" "<<bid2<<" "<<updateSCTrue[make_pair(bid1,bid2)].second<<" "<<newdis<<endl;
+                    updateSCTrue[make_pair(bid1,bid2)].second=newdis;
+                }
+//                overlayBatch.emplace_back(make_pair(bid1,bid2),make_pair(olddis,newdis));
+//                sm->notify();
+            } else if(newdis<olddis && olddis!=INF){
+                cout<<"Something wrong happens. "<<bid1<<"("<<PartiTag[bid1].first<<") "<<bid2<<"("<<PartiTag[bid2].first<<") : "<<newdis<<" "<<olddis<< endl;
+                exit(1);
+            }
+        }
+    }
+//    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<< updateSCSize<<endl;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        overlayBatch.emplace_back(it->first,it->second);
+    }
+    if(!overlayBatch.empty()){
+//        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        IncreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,false);
+    }
+
+
+
+    // repair the partition index
+    if(PSPStrategy>=PostBoundary){
+        Repair_PartiIndex(true,true, partiBatch);
+//        Repair_PartiIndex(false,true, partiBatch);
+    }
+
+    tt.stop();
+//    CorrectnessCheck(100);
+}
+
+void Graph::PCHBatchUpdateEdgeDelete(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
     map<pair<int,int>,pair<int,int>> updateSCTrue;
+    int a,b,oldW,newW;
+    for(int k=0;k<wBatch.size();k++) {
+        a = wBatch[k].first.first;
+        b = wBatch[k].first.second;
+        oldW = wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+//            cout<<Neighbor[a][i].second<<" "<<newW<<endl;
+//                Neighbor[a][i].second=newW;
+                Neighbor[a].erase(Neighbor[a].begin()+i);
+                break;
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+//            cout<<Neighbor[b][i].second<<" "<<newW<<endl;
+//                Neighbor[b][i].second=newW;
+                Neighbor[b].erase(Neighbor[b].begin()+i);
+                break;
+            }
+        }
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(oldW,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(oldW,newW)});
+            }
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(wBatch[k]);
+        }
+    }
+    tt2.start();
+    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), false, boost::ref(updatedSCs[pid]) ));
+        }
+        thread.join_all();
+
+    }
     int updateSCSize=0;
     for(auto it1=partiBatch.begin();it1!=partiBatch.end();++it1){
         int pid=it1->first;
@@ -2807,7 +4869,104 @@ void Graph::PCHBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBat
 //    CorrectnessCheck(100);
 }
 
-//function for throughput test of increase update
+void Graph::PCHBatchUpdateEdgeDeletePre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    int a,b,oldW,newW;
+    for(int k=0;k<wBatch.size();k++) {
+        a = wBatch[k].first.first;
+        b = wBatch[k].first.second;
+        oldW = wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+//            cout<<Neighbor[a][i].second<<" "<<newW<<endl;
+//                Neighbor[a][i].second=newW;
+                Neighbor[a].erase(Neighbor[a].begin()+i);
+                break;
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+//            cout<<Neighbor[b][i].second<<" "<<newW<<endl;
+//                Neighbor[b][i].second=newW;
+                Neighbor[b].erase(Neighbor[b].begin()+i);
+                break;
+            }
+        }
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(oldW,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(oldW,newW)});
+            }
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(wBatch[k]);
+        }
+    }
+
+    vUpdated.assign(node_num, false);
+//    AllPairBoundaryDisUpdate(true, true, partiBatch, overlayBatch);
+    AllPairBoundaryDisUpdate(true, true, partiBatch, updateSCTrue);
+
+    vUpdated.assign(node_num, false);
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchPre, this, pid, boost::ref(it->second), boost::ref(NeighborsParti), boost::ref(Trees[pid]), boost::ref(ranks[pid]), heightMaxs[pid], true));
+        }
+        thread.join_all();
+    }
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        overlayBatch.emplace_back(it->first,it->second);
+        a=it->first.first, b=it->first.second, oldW=it->second.first, newW=it->second.second;
+        bool ifFind=false;
+        for(int i=0;i<NeighborsOverlayV[a].size();++i){
+            if(NeighborsOverlayV[a][i].first==b){
+                NeighborsOverlayV[a][i].second=newW;
+                ifFind=true;
+                break;
+            }
+        }
+        if(!ifFind){
+            cout<<"Not found overlay edge. "<<a<<" "<<b<<" "<<newW<<endl; exit(1);
+        }
+        ifFind=false;
+        for(int i=0;i<NeighborsOverlayV[b].size();++i){
+            if(NeighborsOverlayV[b][i].first==a){
+                NeighborsOverlayV[b][i].second=newW;
+                ifFind=true;
+                break;
+            }
+        }
+        if(!ifFind){
+            cout<<"Not found overlay edge. "<<b<<" "<<a<<" "<<newW<<endl; exit(1);
+        }
+    }
+    if(!overlayBatch.empty()){
+//        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        IncreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,false);
+    }
+    tt.stop();
+//    CorrectnessCheck(100);
+}
+
+//function for increase update
 void Graph::PCHBatchUpdateIncPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
     Timer tt;
     Timer tt2;
@@ -2869,16 +5028,18 @@ void Graph::PCHBatchUpdateIncPre(vector<pair<pair<int, int>, pair<int, int>>> &w
 //    CorrectnessCheck(100);
 }
 
-//function for throughput test of increase update
+//function for increase update
 void Graph::PH2HBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
     Timer tt;
     Timer tt2;
     tt.start();
     map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
     vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
     for(int k=0;k<wBatch.size();k++) {
         int a = wBatch[k].first.first;
         int b = wBatch[k].first.second;
+        int oldW = wBatch[k].second.first;
         int newW = wBatch[k].second.second;
         for(int i=0;i<Neighbor[a].size();i++){
             if(Neighbor[a][i].first==b){
@@ -2897,7 +5058,12 @@ void Graph::PH2HBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBa
 
         int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
         if(pid1 != pid2){
-            overlayBatch.emplace_back(wBatch[k]);
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(oldW,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(oldW,newW)});
+            }
         }else{
             if(partiBatch.find(pid1) == partiBatch.end()){
                 partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
@@ -2919,12 +5085,166 @@ void Graph::PH2HBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBa
         boost::thread_group thread;
         for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
             int pid=it->first;
-            thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchUpdateCheckCH, this, pid, boost::ref(it->second), boost::ref(overlayBatch), false, boost::ref(updatedSCs[pid]) ));
+            if(ifTreeOpt){
+                thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), true, boost::ref(updatedSCs[pid]) ));//with tree optimization
+//                cout<<"partition "<<pid<<endl;
+//                IncreasePartiBatchUpdateCheckCH(pid, it->second, overlayBatch, true, updatedSCs[pid]);
+            }else{
+                thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), true, boost::ref(updatedSCs[pid]) ));//without tree optimization
+            }
+
         }
         thread.join_all();
 
     }
+
+
+
+    int updateSCSize=0;
+    for(auto it1=partiBatch.begin();it1!=partiBatch.end();++it1){
+        int pid=it1->first;
+        vector<int> Bid=BoundVertex[pid];
+        //check the boundary edge within partition
+        int bid1,bid2,olddis,newdis;
+
+        for(auto it=updatedSCs[pid].begin();it!=updatedSCs[pid].end();++it){
+            bid1=it->first.first, bid2=it->first.second; newdis=it->second;
+            updateSCSize++;
+            if(bid1>bid2){
+                int temp=bid1;
+                bid1=bid2, bid2=temp;
+            }
+            if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
+                olddis=NeighborsOverlay[bid1][bid2];
+            }
+            else{//if not found
+                if(ifTreeOpt && ifFullOpt){
+                    olddis=INF;
+                }else{
+                    cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
+                }
+            }
+//        cout<<pid<<": "<<bid1<<" "<<bid2<<" "<<olddis<<" "<<newdis<<endl;
+            if(newdis>olddis){//if '=', not problem; if '<', problem
+//                sm->wait();
+                if(updateSCTrue.find(make_pair(bid1,bid2))==updateSCTrue.end()){
+                    updateSCTrue.insert({make_pair(bid1,bid2), make_pair(olddis,newdis)});
+                }else if(updateSCTrue[make_pair(bid1,bid2)].second>newdis){//if found and newdis is smaller
+                    cout<<"More than one supportive vertices. "<<bid1<<" "<<bid2<<" "<<updateSCTrue[make_pair(bid1,bid2)].second<<" "<<newdis<<endl;
+                    updateSCTrue[make_pair(bid1,bid2)].second=newdis;
+                }
+//                overlayBatch.emplace_back(make_pair(bid1,bid2),make_pair(olddis,newdis));
+//                sm->notify();
+            }
+            else if(newdis<olddis && olddis!=INF){
+                cout<<"Something wrong happens. "<<bid1<<"("<<PartiTag[bid1].first<<") "<<bid2<<"("<<PartiTag[bid2].first<<") : "<<newdis<<" "<<olddis<< endl;
+                exit(1);
+            }
+        }
+    }
+    cout<<"updateSCTrue size: "<<updateSCTrue.size()<<" "<< updateSCSize<<endl;
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+//        cout<<it->first.first<<" "<<it->first.second<<endl;
+        overlayBatch.emplace_back(it->first,it->second);
+    }
+    if(!overlayBatch.empty()){
+//        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        IncreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,true);
+    }
+
+//    IncreaseOverlayBatchLabel(Tree, rank, heightMax, ProBeginVertexSetOverlay, VidtoTNid);
+
+//    if(!partiBatch.empty()){
+//        if(partiBatch.size()>threadnum){
+//            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+//        }
+////        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+//        boost::thread_group thread;
+//        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+//            int pid=it->first;
+//            thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchLabel, this, boost::ref(Trees[pid]), boost::ref(ranks[pid]), heightMaxs[pid], boost::ref(ProBeginVertexSetParti[pid]), boost::ref(VidtoTNidP) ));//vector<Node> &Tree, vector<int> &rank, int heightMax, int& checknum, vector<int>& ProBeginVertexSet, vector<vector<int>> &VidtoTNid
+//        }
+//        thread.join_all();
+//    }
+
+
+
+    // repair the partition index
+    if(PSPStrategy>=PostBoundary){
+        Repair_PartiIndex(true,true, partiBatch);
+//        Repair_PartiIndex(false,true, partiBatch);
+
+    }
+
+    tt.stop();
+//    CorrectnessCheck(100);
+}
+
+void Graph::PH2HBatchUpdateEdgeDelete(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
     map<pair<int,int>,pair<int,int>> updateSCTrue;
+    int a,b,oldW,newW;
+    for(int k=0;k<wBatch.size();k++) {
+        a = wBatch[k].first.first;
+        b = wBatch[k].first.second;
+        oldW = wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+//            cout<<Neighbor[a][i].second<<" "<<newW<<endl;
+//                Neighbor[a][i].second=newW;
+                Neighbor[a].erase(Neighbor[a].begin()+i);
+                break;
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+//            cout<<Neighbor[b][i].second<<" "<<newW<<endl;
+//                Neighbor[b][i].second=newW;
+                Neighbor[b].erase(Neighbor[b].begin()+i);
+                break;
+            }
+        }
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(oldW,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(oldW,newW)});
+            }
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(wBatch[k]);
+        }
+    }
+    tt2.start();
+    vUpdated.assign(node_num, false);
+    vector<vector<pair<pair<int,int>,int>>> updatedSCs;
+    updatedSCs.assign(partiNum,vector<pair<pair<int,int>,int>>());
+//    cout<<"updateSCTrue size before update: "<<updateSCTrue.size()<<endl;
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch), true, boost::ref(updatedSCs[pid]) ));
+        }
+        thread.join_all();
+
+    }
+
     int updateSCSize=0;
     for(auto it1=partiBatch.begin();it1!=partiBatch.end();++it1){
         int pid=it1->first;
@@ -2938,16 +5258,27 @@ void Graph::PH2HBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBa
             if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
                 olddis=NeighborsOverlay[bid1][bid2];
             }else{//if not found
-                cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
+                cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl;
+                exit(1);
             }
 //        cout<<pid<<": "<<bid1<<" "<<bid2<<" "<<olddis<<" "<<newdis<<endl;
             if(newdis>olddis){//if '=', not problem; if '<', problem
 //                sm->wait();
-                if(updateSCTrue.find(make_pair(bid1,bid2))==updateSCTrue.end()){
-                    updateSCTrue.insert({make_pair(bid1,bid2), make_pair(olddis,newdis)});
-                }else if(updateSCTrue[make_pair(bid1,bid2)].second>newdis){//if found and newdis is smaller
-                    cout<<"More than one supportive vertices. "<<bid1<<" "<<bid2<<" "<<updateSCTrue[make_pair(bid1,bid2)].second<<" "<<newdis<<endl;
-                    updateSCTrue[make_pair(bid1,bid2)].second=newdis;
+                if(bid1<=bid2){
+                    if(updateSCTrue.find(make_pair(bid1,bid2))==updateSCTrue.end()){
+                        updateSCTrue.insert({make_pair(bid1,bid2), make_pair(olddis,newdis)});
+                    }else if(updateSCTrue[make_pair(bid1,bid2)].second>newdis){//if found and newdis is smaller
+                        cout<<"More than one supportive vertices. "<<bid1<<" "<<bid2<<" "<<updateSCTrue[make_pair(bid1,bid2)].second<<" "<<newdis<<endl;
+                        updateSCTrue[make_pair(bid1,bid2)].second=newdis;
+                    }
+                }
+                else{
+                    if(updateSCTrue.find(make_pair(bid2,bid1))==updateSCTrue.end()){
+                        updateSCTrue.insert({make_pair(bid2,bid1), make_pair(olddis,newdis)});
+                    }else if(updateSCTrue[make_pair(bid2,bid1)].second>newdis){//if found and newdis is smaller
+                        cout<<"More than one supportive vertices. "<<bid1<<" "<<bid2<<" "<<updateSCTrue[make_pair(bid2,bid1)].second<<" "<<newdis<<endl;
+                        updateSCTrue[make_pair(bid2,bid1)].second=newdis;
+                    }
                 }
 //                overlayBatch.emplace_back(make_pair(bid1,bid2),make_pair(olddis,newdis));
 //                sm->notify();
@@ -2963,23 +5294,23 @@ void Graph::PH2HBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBa
     }
     if(!overlayBatch.empty()){
 //        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
-        IncreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,false);
+        IncreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,true);
     }
 
-    IncreaseOverlayBatchLabel(Tree, rank, heightMax, ProBeginVertexSetOverlay, VidtoTNid);
-
-    if(!partiBatch.empty()){
-        if(partiBatch.size()>threadnum){
-            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
-        }
-//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
-        boost::thread_group thread;
-        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
-            int pid=it->first;
-            thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchLabel, this, boost::ref(Trees[pid]), boost::ref(ranks[pid]), heightMaxs[pid], boost::ref(ProBeginVertexSetParti[pid]), boost::ref(VidtoTNidP) ));//vector<Node> &Tree, vector<int> &rank, int heightMax, int& checknum, vector<int>& ProBeginVertexSet, vector<vector<int>> &VidtoTNid
-        }
-        thread.join_all();
-    }
+//    IncreaseOverlayBatchLabel(Tree, rank, heightMax, ProBeginVertexSetOverlay, VidtoTNid);
+//    cout<<"parti label update"<<endl;
+//    if(!partiBatch.empty()){
+//        if(partiBatch.size()>threadnum){
+//            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+//        }
+////        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+//        boost::thread_group thread;
+//        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+//            int pid=it->first;
+//            thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchLabel, this, boost::ref(Trees[pid]), boost::ref(ranks[pid]), heightMaxs[pid], boost::ref(ProBeginVertexSetParti[pid]), boost::ref(VidtoTNidP) ));//vector<Node> &Tree, vector<int> &rank, int heightMax, int& checknum, vector<int>& ProBeginVertexSet, vector<vector<int>> &VidtoTNid
+//        }
+//        thread.join_all();
+//    }
 
 
 
@@ -2994,7 +5325,7 @@ void Graph::PH2HBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBa
 //    CorrectnessCheck(100);
 }
 
-//function for throughput test of increase update
+//function for increase update
 void Graph::PH2HBatchUpdateIncPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
     Timer tt;
     Timer tt2;
@@ -3050,7 +5381,108 @@ void Graph::PH2HBatchUpdateIncPre(vector<pair<pair<int, int>, pair<int, int>>> &
 
     if(!overlayBatch.empty()){
 //        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
-        IncreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,false);
+        IncreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,true);
+    }
+    tt.stop();
+//    CorrectnessCheck(100);
+}
+
+void Graph::PH2HBatchUpdateEdgeDeletePre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1) {
+    Timer tt;
+    Timer tt2;
+    tt.start();
+    map<int, vector<pair<pair<int, int>, pair<int, int>>>> partiBatch; partiBatch.clear();
+    vector<pair<pair<int, int>, pair<int, int>>> overlayBatch;
+    map<pair<int,int>,pair<int,int>> updateSCTrue;
+    int a,b,oldW,newW;
+    for(int k=0;k<wBatch.size();k++) {
+        a = wBatch[k].first.first;
+        b = wBatch[k].first.second;
+        oldW = wBatch[k].second.first;
+        newW = wBatch[k].second.second;
+        for(int i=0;i<Neighbor[a].size();i++){
+            if(Neighbor[a][i].first==b){
+//            cout<<Neighbor[a][i].second<<" "<<newW<<endl;
+//                Neighbor[a][i].second=newW;
+                Neighbor[a].erase(Neighbor[a].begin()+i);
+                break;
+            }
+        }
+        for(int i=0;i<Neighbor[b].size();i++){
+            if(Neighbor[b][i].first==a){
+//            cout<<Neighbor[b][i].second<<" "<<newW<<endl;
+//                Neighbor[b][i].second=newW;
+                Neighbor[b].erase(Neighbor[b].begin()+i);
+                break;
+            }
+        }
+
+        int pid1=PartiTag[a].first, pid2=PartiTag[b].first;
+        if(pid1 != pid2){
+//            overlayBatch.emplace_back(wBatch[k]);
+            if(a<=b){
+                updateSCTrue.insert({make_pair(a,b), make_pair(oldW,newW)});
+            }else{
+                updateSCTrue.insert({make_pair(b,a), make_pair(oldW,newW)});
+            }
+
+        }else{
+            if(partiBatch.find(pid1) == partiBatch.end()){
+                partiBatch.insert({pid1,vector<pair<pair<int, int>, pair<int, int>>>()});
+            }
+            partiBatch[pid1].emplace_back(wBatch[k]);
+        }
+    }
+    cout<<"overlayBatch size before update: "<<updateSCTrue.size()<<endl;
+    vUpdated.assign(node_num, false);
+//    AllPairBoundaryDisUpdate(true, true, partiBatch, overlayBatch);
+    AllPairBoundaryDisUpdate(true, true, partiBatch, updateSCTrue);
+
+    vUpdated.assign(node_num, false);
+    if(!partiBatch.empty()){
+        if(partiBatch.size()>threadnum){
+            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+        boost::thread_group thread;
+        for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
+            int pid=it->first;
+            thread.add_thread(new boost::thread(&Graph::IncreasePartiBatchPre, this, pid, boost::ref(it->second), boost::ref(NeighborsParti), boost::ref(Trees[pid]), boost::ref(ranks[pid]), heightMaxs[pid], true));
+//            cout<<"partition "<<pid<<endl;
+//            IncreasePartiBatchPre(pid, it->second, NeighborsParti, Trees[pid], ranks[pid], heightMaxs[pid], true);
+        }
+        thread.join_all();
+    }
+
+    for(auto it=updateSCTrue.begin();it!=updateSCTrue.end();++it){
+        overlayBatch.emplace_back(it->first,it->second);
+        a=it->first.first, b=it->first.second, oldW=it->second.first, newW=it->second.second;
+        bool ifFind=false;
+        for(int i=0;i<NeighborsOverlayV[a].size();++i){
+            if(NeighborsOverlayV[a][i].first==b){
+                NeighborsOverlayV[a][i].second=newW;
+                ifFind=true;
+                break;
+            }
+        }
+        if(!ifFind){
+            cout<<"Not found overlay edge. "<<a<<" "<<b<<" "<<newW<<endl; exit(1);
+        }
+        ifFind=false;
+        for(int i=0;i<NeighborsOverlayV[b].size();++i){
+            if(NeighborsOverlayV[b][i].first==a){
+                NeighborsOverlayV[b][i].second=newW;
+                ifFind=true;
+                break;
+            }
+        }
+        if(!ifFind){
+            cout<<"Not found overlay edge. "<<b<<" "<<a<<" "<<newW<<endl; exit(1);
+        }
+    }
+    if(!overlayBatch.empty()){
+        cout<<"OverlayBatch size: "<<overlayBatch.size()<<endl;
+        IncreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax,SCconNodesMT,VidtoTNid,true);
     }
     tt.stop();
 //    CorrectnessCheck(100);
@@ -3296,55 +5728,102 @@ void Graph::DecreasePartiBatchUpdateCheckCH(int pid, vector<pair<pair<int,int>,p
 }
 
 
-//for PH2H
-void Graph::IncreasePartiBatchUpdateCheck(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay){
-    //partition batch Increase update
-    vector<pair<pair<int,int>,int>> updatedSC;
+void Graph::EdgeInsertPartiBatchUpdateCheck(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifLabel, vector<pair<pair<int,int>,int>>& updatedSC){
+    //partition batch decrease update
+//    vector<pair<pair<int,int>,int>> updatedSC;
 
-    IncreasePartiBatch(pid, wBatch,NeighborsParti, Trees[pid], ranks[pid], heightMaxs[pid],SCconNodesMTP,VidtoTNidP, updatedSC,true);
 
-    vector<int> Bid=BoundVertex[pid];
-    //check the boundary edge within partition
-    int bid1,bid2,olddis,newdis;
-    for(int i=0;i<Bid.size();i++){
-        bid1=Bid[i];
-        for(int j=i+1;j<Bid.size();j++){
-            bid2=Bid[j];
-            if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
-                olddis=NeighborsOverlay[bid1][bid2];
-            }else{//if not found
-//                    cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl;
-                continue;//exit(1);
-            }
-
-            newdis=QueryH2HPartition(bid1,bid2,pid);
-            if(newdis>olddis){//if '=', not problem; if '<', problem
-                sm->wait();
-                weightOverlay.emplace_back(make_pair(bid1,bid2),make_pair(olddis,newdis));
-                sm->notify();
-            } else if(newdis<olddis){
-                cout<<"Something wrong happens. "<<bid1<<"("<<PartiTag[bid1].first<<") "<<bid2<<"("<<PartiTag[bid2].first<<") : "<<newdis<<" "<<olddis<< endl;
-                exit(1);
-            }
-        }
+    if(ifLabel){
+        EdgeInsertPartiBatchH2H(pid,wBatch,NeighborsParti,Trees[pid], ranks[pid], heightMaxs[pid], updatedSC, true);
+    }else{
+        EdgeInsertPartiBatchCH(pid,wBatch,NeighborsParti,Trees[pid], ranks[pid], heightMaxs[pid], updatedSC);
     }
+
+//    vector<int> Bid=BoundVertex[pid];
+//    //check the boundary edge within partition
+//    int bid1,bid2,olddis,newdis;
+//    for(auto it=updatedSC.begin();it!=updatedSC.end();++it){
+//        bid1=it->first.first, bid2=it->first.second; newdis=it->second;
+//        if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found
+//            olddis=NeighborsOverlay[bid1][bid2];
+//        }else{//if not found
+//            cout<<"Not found edge e("<<bid1<<","<<bid2<<") in overlay graph!"<<endl; exit(1);
+//        }
+//
+//        if(newdis<olddis){
+////            cout<<bid1<<" "<<bid2<<" "<<olddis<<" "<<newdis<<endl;
+////                NeighborsOverlay[bid1][bid2]=newdis;
+////                NeighborsOverlay[bid2][bid1]=newdis;
+//            sm->wait();
+//            weightOverlay.emplace_back(make_pair(bid1,bid2),make_pair(olddis,newdis));//weightOverlay collect the changed edges on overlay graph
+//            sm->notify();
+//        }
+//    }
+
 }
-//for PCH
-void Graph::IncreasePartiBatchUpdateCheckCH(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifOpt, vector<pair<pair<int,int>,int>>& updatedSC){
+
+//for PH2H and PCH
+void Graph::IncreasePartiBatchUpdateCheck(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifLabel, vector<pair<pair<int,int>,int>>& updatedSC){
     //partition batch Increase update
 //    vector<pair<pair<int,int>,int>> updatedSC;
 
-    if(ifOpt){
-        IncreasePartiBatchForOpt(pid, wBatch,NeighborsParti, Trees[pid], ranks[pid], heightMaxs[pid],SCconNodesMTP,VidtoTNidP, updatedSC,false);
+    if(ifTreeOpt){
+        IncreasePartiBatchForOpt(pid, wBatch,NeighborsParti, Trees[pid], ranks[pid], heightMaxs[pid],SCconNodesMTP,VidtoTNidP, updatedSC,ifLabel);
     }else{
-        IncreasePartiBatch(pid, wBatch,NeighborsParti, Trees[pid], ranks[pid], heightMaxs[pid],SCconNodesMTP,VidtoTNidP, updatedSC,false);
+        IncreasePartiBatch(pid, wBatch,NeighborsParti, Trees[pid], ranks[pid], heightMaxs[pid],SCconNodesMTP,VidtoTNidP, updatedSC,ifLabel);
+
+        //check the boundary edge within partition
+        int ID1,ID2,olddis,newdis;
+        if(ifLabel){
+            for(int i=0;i<BoundVertex[pid].size();i++){
+                ID1=BoundVertex[pid][i];
+                for(int j=i+1;j<BoundVertex[pid].size();j++){
+                    ID2=BoundVertex[pid][j];
+                    if(NeighborsOverlay[ID1].find(ID2)!=NeighborsOverlay[ID1].end()){//if found
+                        newdis=QueryH2HPartition(ID1,ID2,pid);
+                        if(newdis>NeighborsOverlay[ID1][ID2]){
+                            updatedSC.emplace_back(make_pair(ID1,ID2),newdis);
+                        }
+                    }
+                    else{
+                        if(!ifFullOpt){
+                            cout<<"Wrong. Not found. "<<ID1<<" "<<ID2<<endl; exit(1);
+                        }
+
+                    }
+                }
+            }
+        }
+        else{
+            for(int i=0;i<BoundVertex[pid].size();i++){
+                ID1=BoundVertex[pid][i];
+                for(int j=i+1;j<BoundVertex[pid].size();j++){
+                    ID2=BoundVertex[pid][j];
+                    if(NeighborsOverlay[ID1].find(ID2)!=NeighborsOverlay[ID1].end()){//if found
+                        newdis=QueryCHPartition(ID1,ID2,pid,Trees);
+                        if(newdis>NeighborsOverlay[ID1][ID2]){
+                            updatedSC.emplace_back(make_pair(ID1,ID2),newdis);
+                        }
+                    }
+                    else{
+                        if(!ifFullOpt){
+                            cout<<"Wrong. Not found. "<<ID1<<" "<<ID2<<endl; exit(1);
+                        }
+
+                    }
+                }
+            }
+        }
+
     }
 
 //    cout<<pid<<". Size of updatedSC: "<<updatedSC.size()<<endl;
 //    vector<int> Bid=BoundVertex[pid];
-//    //check the boundary edge within partition
-//    int bid1,bid2,olddis,newdis;
-//
+
+
+
+
+
 //    for(auto it=updatedSC.begin();it!=updatedSC.end();++it){
 //        bid1=it->first.first, bid2=it->first.second; newdis=it->second;
 //        if(NeighborsOverlay[bid1].find(bid2) != NeighborsOverlay[bid1].end()){//if found

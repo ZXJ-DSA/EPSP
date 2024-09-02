@@ -38,7 +38,14 @@
 #define PreBoundary 1
 #define NoBoundary 2
 #define PostBoundary 3
-
+#define EdgeCut 1
+#define VertexCut 2
+#define EdgeDecrease 1
+#define EdgeIncrease 2
+#define EdgeInsertion 3
+#define VertexInsertion 4
+#define EdgeDeletion 5
+#define VertexDeletion 6
 
 //typedef unsigned int vertex;
 typedef int vertex;
@@ -157,7 +164,7 @@ struct DegComp2{//min-first
 
 struct Node{//tree node
 	vector<pair<int,pair<int,int>>> vert;//neighID/weight/count(how many ways can lead to this super edge weight)
-	vector<int> pos;
+	vector<int> pos;//the position index of neighbor vert. last element is the position index of this node
 	vector<int> dis, cnt;//the distance value and corresponding count number (i.e., record how many path has the shortest distance)
     vector<int> disPost, cntPost;//the distance value of post-boundary strategy and corresponding count number
     vector<int> disInf;//the distance from this vertex to the boundary vertices and corresponding count number, cntInf
@@ -169,7 +176,7 @@ struct Node{//tree node
 	set<int> DisRe;//record the vertex id that the distance label should be updated
     set<int> DisRePost;//record the vertex id that the interface label should be updated
 	vector<int> ch;//position index of children
-	int height, hdepth;//hdepty is the deepest node that a vertex still exists
+	int height, hdepth;//hdepth is the deepest node that a vertex still exists
 	int pa;//parent, the pa of root vertex is 0, position index
 	int uniqueVertex;//vertex id of this tree node
 //	vector<int> piv;//pivot vetex, used in path retrieval
@@ -208,7 +215,7 @@ public:
     vector<vector<pair<vertex,int>>> NeighborsOverlayV;//<node_number,<adjacency lists of overlay graph>>
 //    vector<unordered_map<int,int>> BoundaryShortcuts;
     vector<pair<int,bool>> PartiTag;//<node_number,<partition_id,if_boundary>>, for edge-cut
-//    vector<pair<int,set<int>>> PartiTags;//<node_number,<flag,set<partition_id>>>, flag=-1 means boundary vertex, flag>=0 means partition id, for vertex-cut
+    vector<pair<int,set<int>>> PartiTagVC;//<node_number,<flag,set<partition_id>>>, flag=-1 means boundary vertex, flag>=0 means partition id, for vertex-cut
     vector<vector<vertex>> PartiVertex;//<partition_number,<in-partition vertices>>, in increasing vertex order, higher-rank vertex first
     vector<vector<vertex>> BoundVertex;//boundary vertices of each partition
 //    vector<unordered_set<int>> BoundVertexSet;//boundary vertices of each partition
@@ -216,13 +223,18 @@ public:
     vector<vertex> OverlayVertex;//overlay vertex in decreasing vertex order
 //    vector<unordered_map<vertex,pair<int,int>>> repairShortcuts;//<ID1,ID2,<overlay weight, in-partition weight>>
     vector<map<int,int>> BoundShortcuts;//<ID1,ID2,weight>, source=-1 means stemming from core while source>=0 means stemming from specific partition
-    int partiNum;   //partition number
+    int partiNum;   //actual partition number
+    int pNum;   //nominated partition number
     bool ifParallel = true;
     bool ifIncrease = false;
+    int cutType = 1;//1: edge-cut, 2: vertex-cut
     int nodeNumOverlay = 0;//vertex number of overlay graph
     vector<double> stageDurations;//durations of querying stages
     vector<pair<int,int>> GraphLocation;//Longitude and Latitude, already times 1000,000
 
+    vector<bool> fullyConnected;//indicate whether this boundary vertex is fully-connected vertex
+    bool ifFullOpt=false;//whether to use the overlay simplification optimization
+    bool ifTreeOpt=false;//whether to use the tree decomposition optimization
 
     int HighestOrder;
     vector<bool> existOverlay;
@@ -238,12 +250,13 @@ public:
     string algoParti="NC";
     int algoChoice=2;//SP index. 1: CH; 2: H2H; 3: PLL
     int PSPStrategy=2;//PSP strategy. 1: Pre; 2: No; 3: Post
+    int updateType=0;
 
 	//vertex order
-	vector<int> NodeOrder;//nodeID order
+	vector<int> NodeOrder;//nodeID order, from 0
 	vector<int> vNodeOrder;//order nodeID
     int treewidth=0;//treewidth
-
+    int percent=0;
 
     /// Index Construction
 //    vector<omp_lock_t> oml;
@@ -294,6 +307,10 @@ public:
 
     vector<bool> vUpdated;// flag of whether the label of vertex has been updated
     vector<int> bHeights;
+    int minWeight=INF;
+    int maxWeight=0;
+    int maxDegree=0;
+    unsigned long long int qBNum=0;
 
     ~Graph(){
         clear();
@@ -322,13 +339,18 @@ public:
     void PH2HIndexConstruct(int strategy);
     void PPLLIndexConstruct(int strategy);
 
+    void PPLLIndexConstructVertexCut(int strategy);
+
     /// Pre-boundary Strategy
     void AllPairBoundaryDisCompute(bool ifParallel);
     void AllPairBoundaryDisUpdate(bool ifParallel, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>>& partiBatch, vector<pair<pair<int, int>, pair<int, int>>>& overlayBatch);
+    void AllPairBoundaryDisUpdate(bool ifParallel, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>>& partiBatch, map<pair<int, int>, pair<int, int>>& overlayBatch);
     void AllPairBoundaryDisComputeParti(int pid);
     void AllPairBoundaryDisUpdateParti(int pid, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>>& partiBatch, vector<pair<pair<int, int>, pair<int, int>>>& overlayBatch);
+    void AllPairBoundaryDisUpdatePartiMap(int pid, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>>& partiBatch, map<pair<int, int>, pair<int, int>>& overlayBatch);
     void AllPairBoundaryDisComputePartiV(vector<int>& p);
     void AllPairBoundaryDisUpdatePartiV(vector<int>& p, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>>& partiBatch, vector<pair<pair<int, int>, pair<int, int>>>& overlayBatch);
+    void AllPairBoundaryDisUpdatePartiMapV(vector<int>& p, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>>& partiBatch, map<pair<int, int>, pair<int, int>>& overlayBatch);
     int BoundaryDijkstra(int ID1, vector<int> & IDs, vector<int>& Dis, vector<vector<pair<vertex,int>>> &Neighbor);
 
 
@@ -344,28 +366,49 @@ public:
 //    vector<unordered_set<int>> ChangedLabels;
 //    set<pair<int,int>> NoSupportedPair;
 
+
+
     //partition index
     vector<hl::Labeling> LabelVs;
     vector<hl::PPR> PPRVs;
     vector<unordered_map<vertex,int>> Labels;
+//    vector<map<vertex,int>> Labels;
     vector<unordered_map<vertex,unordered_set<vertex>>> PruningPointSetP;//{(v,c),u}
     vector<unordered_map<vertex,vertex>> PruningPointSetP2;//<v,u,{c}>
     vector<unordered_map<vertex,int>> LabelsPost;
     vector<unordered_map<vertex,unordered_set<vertex>>> PruningPointSetPost;//{(v,c),u}
     vector<unordered_map<vertex,vertex>> PruningPointSetPost2;//<v,u,{c}>
+    double coaseUpdateT=0;
+    double refineUpdateT=0;
+    double cleanUpdateT=0;
+    unsigned long long int queryNum=0;
+    unsigned long long int labelChangeNum=0;
+
+//    vector<vector<unordered_map<vertex,int>>> LabelsBoundary;//PLL labels of boundary vertex for all partitions, the vertex ID is mapped by IDMap
 
     void ConstructPLL_OverlayIndex(vector<vector<pair<vertex,int>>> &Neighbor);
     void ConstructPLL_PartiIndex(bool ifParallel);
     void ConstructPLL_PartiIndexPost(bool ifParallel);
+    void BPCLIndexConstructPartiVMap(vector<int>& p, vector<vector<pair<vertex, int>>> &Neighbor, vector<map<vertex,int>>& Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
     void BPCLIndexConstructPartiV(vector<int>& p, vector<vector<pair<vertex, int>>> &Neighbor, vector<unordered_map<vertex,int>>& Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
+    void BPCLIndexConstructPartiMap(int pid, vector<vector<pair<vertex,int>>> &Neighbor, vector<map<vertex,int>>& Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
     void BPCLIndexConstructParti(int pid, vector<vector<pair<vertex,int>>> &Neighbor, vector<unordered_map<vertex,int>>& Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
     void BatchPCLDijk(vertex nodeID, unordered_set<vertex>& setNodes, vertex hID, vector<vector<pair<vertex,int>>> &Neighbor, vector<unordered_map<vertex,int>>& Label);
+    void BatchPCLDijkNew(vertex nodeID, unordered_set<vertex>& setNodes, vertex hID, vector<vector<pair<vertex,int>>> &Neighbor, vector<unordered_map<vertex,int>>& Label, vector<tuple<int,int,int>> &labelTemp);
+    void BatchPCLDijk2New(vector<vertex>& p, unordered_set<vertex>& setNodes, vertex hID, vector<vector<pair<vertex,int>>> &Neighbor, vector<unordered_map<vertex,int>>& Label, vector<tuple<int,int,int>> &labelTemp);
+    void BatchPCLDijkNewMap(vertex nodeID, unordered_set<vertex>& setNodes, vertex hID, vector<vector<pair<vertex,int>>> &Neighbor, vector<map<vertex,int>>& Label, vector<tuple<int,int,int>> &labelTemp);
+    void BatchPCLDijk2NewMap(vector<vertex>& p, unordered_set<vertex>& setNodes, vertex hID, vector<vector<pair<vertex,int>>> &Neighbor, vector<map<vertex,int>>& Label, vector<tuple<int,int,int>> &labelTemp);
     void BatchPCLDijk2(vector<vertex>& p, unordered_set<vertex>& setNodes, vertex hID, vector<vector<pair<vertex,int>>> &Neighbor, vector<unordered_map<vertex,int>>& Label);
     int ShortestDisQuery1(int ID1,int ID2,vector<int>& SupNode, int& d, vector<unordered_map<vertex,int>>& Label);
+    int ShortestDisQuery1(int ID1,int ID2,vector<int>& SupNode, int& d, vector<map<vertex,int>>& Label);
     int ShortestDisQuery2(int ID1,int ID2,vector<int>& SupNode, int& d, vector<unordered_map<vertex,int>>& Label);
+    int ShortestDisQuery2(int ID1,int ID2,vector<int>& SupNode, int& d, vector<map<vertex,int>>& Label);
     void PPRConstruction(vertex nodeID, vector<vector<pair<vertex,int>>> &Neighbor, vector<unordered_map<vertex,int>>& Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
+    void PPRConstruction(vertex nodeID, vector<vector<pair<vertex,int>>> &Neighbor, vector<map<vertex,int>>& Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
     void PPRConstruction2(vector<vertex> & p, vector<vector<pair<vertex,int>>> &Neighbor, vector<unordered_map<vertex,int>>& Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
+    void PPRConstruction2Map(vector<vertex> & p, vector<vector<pair<vertex,int>>> &Neighbor, vector<map<vertex,int>>& Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
     void PruningPointBuild(bool ifParallel, vector<vector<vertex>> & processID, vector<vector<pair<vertex,int>>> &Neighbor, vector<unordered_map<vertex,int>>& Label,  vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
+    void PruningPointBuild(bool ifParallel, vector<vector<vertex>> & processID, vector<vector<pair<vertex,int>>> &Neighbor, vector<map<vertex,int>>& Label,  vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
     void PLLConstructV(vector<vector<pair<vertex,int>>>& Neighbor);
     void DijksPrune1V(int nodeID,vector<vector<pair<vertex,int>>>& Neighbor);
     int PLLDisQuery1V(int ID1,unordered_map<vertex,int>& Lh,vector<int>& SupNode);
@@ -378,28 +421,57 @@ public:
     void IndexSizePPLL();
 
     void DecreasePartiBatchUpdatePLL(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifOverlay);
-    void PPLLBatchUpdateDec(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1);
-    void PPLLBatchUpdateDecPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1);
+    void PPLLBatchUpdateDec(vector<pair<pair<int, int>, pair<int, int>>> &wBatch);
+    void PPLLBatchUpdateDecPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch);
     void DecreasePSL(int a, int b, int oldW, int newW, vector<vector<pair<vertex,int>>> &Neighbors,vector<unordered_map<vertex,int>> &Label);
+    void DecreasePSL(int a, int b, int oldW, int newW, vector<vector<pair<vertex,int>>> &Neighbors,vector<map<vertex,int>> &Label);
     int PLLQuery(int ID1,int ID2,vector<unordered_map<vertex,int>> &Label);
-    void Repair_PartiIndexPLL(bool ifParallel, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>> & partiBatch);
+    int PLLQuery(int ID1,int ID2,vector<map<vertex,int>> &Label);
+    void Repair_PartiIndexPLL(bool ifParallel, map<int, vector<pair<pair<int, int>, pair<int, int>>>> & partiBatch);
     void RepairPartitionIndexDecreasePLL(int pid, map<int, vector<pair<pair<int, int>, pair<int, int>>>> & partiBatch);
     void RepairPartitionIndexPLLV(vector<int>& p, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>> & partiBatch);
     void RepairPartitionIndexIncreasePLL(int pid, map<int, vector<pair<pair<int, int>, pair<int, int>>>> & partiBatch);
+    void RepairPartitionIndexEdgeDeletePLL(int pid, map<int, vector<pair<pair<int, int>, pair<int, int>>>> & partiBatch);
 
+    void EdgeDeletePartiBatchUpdatePLL(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifOverlay);
     void IncreasePartiBatchUpdatePLL(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifOverlay);
-    void PPLLBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1);
-    void PPLLBatchUpdateIncPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1);
+    void PPLLBatchUpdateEdgeDelete(vector<pair<pair<int, int>, pair<int, int>>> &wBatch);
+    void PPLLBatchUpdateEdgeDeletePre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch);
+    void PPLLBatchUpdateInc(vector<pair<pair<int, int>, pair<int, int>>> &wBatch);
+    void PPLLBatchUpdateIncPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch);
+    void EdgeDeletePSL(int a, int b, int oldW, vector<vector<pair<vertex,int>>> &Neighbor,vector<unordered_map<vertex,int>> &Label, vector<unordered_map<vertex,unordered_set<vertex>>> &PruningPointNew, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
+    void EdgeDeletePSL(int a, int b, int oldW, vector<vector<pair<vertex,int>>> &Neighbor,vector<map<vertex,int>> &Label, vector<unordered_map<vertex,unordered_set<vertex>>> &PruningPointNew, vector<unordered_map<vertex,vertex>>& PruningPointSet2);
+    void IncreasePSL(int a, int b, int oldW, int newW, vector<vector<pair<vertex,int>>> &Neighbor,vector<map<vertex,int>> &Label, vector<unordered_map<vertex,unordered_set<vertex>>> &PruningPointNew, vector<unordered_map<vertex,vertex>>& PruningPointSet2);//set version with NoSupportedPair
     void IncreasePSL(int a, int b, int oldW, int newW, vector<vector<pair<vertex,int>>> &Neighbor,vector<unordered_map<vertex,int>> &Label, vector<unordered_map<vertex,unordered_set<vertex>>> &PruningPointNew, vector<unordered_map<vertex,vertex>>& PruningPointSet2);//set version with NoSupportedPair
     void CoarseUpdate(int LID,int HID, int oldW, queue<pair<int,pair<int,int>>>& WaitPro, queue<pair<int,pair<int,int>>>& WaitProP, vector<pair<int,int>>& AL1, vector<pair<int,int>>& AL2, vector<pair<int,int>>& AL2Check, vector<vector<pair<vertex,int>>> &Neighbor,vector<unordered_map<vertex,int>> &Label, bool ifDebug, int lid, int hid, vector<unordered_set<int>>& ChangedLabels);
     void RefineUpdate(queue<pair<int,pair<int,int>>>& WaitPro, queue<pair<int,pair<int,int>>>& WaitProP, vector<pair<int,int>>& AL1, vector<pair<int,int>>& AL2, vector<pair<int,int>>& AL2Check, set<tuple<vertex,vertex,vertex>>& outdatedPruning, map<pair<vertex,vertex>,vertex>& newPruningPoints, vector<unordered_map<vertex,vertex>>& PruningPointSet2, vector<vector<pair<vertex,int>>> &Neighbor,vector<unordered_map<vertex,int>> &Label,vector<unordered_map<vertex,unordered_set<vertex>>> &PruningPointNew, bool ifDebug, int lid, int hid, vector<unordered_set<int>>& ChangedLabels, set<pair<int,int>>& NoSupportedPair);//queue version
     bool PPRCheck(int curID, int hubID, vector<vector<pair<vertex,int>>> &Neighbor, vector<unordered_map<vertex,int>> &Label, vector<unordered_map<vertex,unordered_set<vertex>>> &PruningPointNew, queue<pair<int,pair<int,int>>>& WaitProPTem, vector<pair<int,int>> &AL2, map<pair<vertex,vertex>,vertex> &newPruningPoints, vector<unordered_map<vertex,vertex>>& PruningPointSet2, set<tuple<vertex,vertex,vertex>> &outdatedPruning, bool ifDebug, int lid, int hid, vector<unordered_set<int>>& ChangedLabels, set<pair<int,int>>& NoSupportedPair);//queue version
+    void PPRClean(vector<vector<pair<vertex,int>>> &Neighbors, map<pair<vertex,vertex>,vertex> &newPruningPoints, set<tuple<vertex,vertex,vertex>> &outdatedPruning, bool ifDebug, int lid, int hid, vector<map<vertex,int>> &Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2, vector<unordered_set<int>>& ChangedLabels);
+    void CoarseUpdate(int LID,int HID, int oldW, queue<pair<int,pair<int,int>>>& WaitPro, queue<pair<int,pair<int,int>>>& WaitProP, vector<pair<int,int>>& AL1, vector<pair<int,int>>& AL2, vector<pair<int,int>>& AL2Check, vector<vector<pair<vertex,int>>> &Neighbor,vector<map<vertex,int>> &Label, bool ifDebug, int lid, int hid, vector<unordered_set<int>>& ChangedLabels);
+    void RefineUpdate(queue<pair<int,pair<int,int>>>& WaitPro, queue<pair<int,pair<int,int>>>& WaitProP, vector<pair<int,int>>& AL1, vector<pair<int,int>>& AL2, vector<pair<int,int>>& AL2Check, set<tuple<vertex,vertex,vertex>>& outdatedPruning, map<pair<vertex,vertex>,vertex>& newPruningPoints, vector<unordered_map<vertex,vertex>>& PruningPointSet2, vector<vector<pair<vertex,int>>> &Neighbor,vector<map<vertex,int>> &Label,vector<unordered_map<vertex,unordered_set<vertex>>> &PruningPointNew, bool ifDebug, int lid, int hid, vector<unordered_set<int>>& ChangedLabels, set<pair<int,int>>& NoSupportedPair);//queue version
+    bool PPRCheck(int curID, int hubID, vector<vector<pair<vertex,int>>> &Neighbor, vector<map<vertex,int>> &Label, vector<unordered_map<vertex,unordered_set<vertex>>> &PruningPointNew, queue<pair<int,pair<int,int>>>& WaitProPTem, vector<pair<int,int>> &AL2, map<pair<vertex,vertex>,vertex> &newPruningPoints, vector<unordered_map<vertex,vertex>>& PruningPointSet2, set<tuple<vertex,vertex,vertex>> &outdatedPruning, bool ifDebug, int lid, int hid, vector<unordered_set<int>>& ChangedLabels, set<pair<int,int>>& NoSupportedPair);//queue version
     void PPRClean(vector<vector<pair<vertex,int>>> &Neighbors, map<pair<vertex,vertex>,vertex> &newPruningPoints, set<tuple<vertex,vertex,vertex>> &outdatedPruning, bool ifDebug, int lid, int hid, vector<unordered_map<vertex,int>> &Label, vector<unordered_map<vertex,unordered_set<vertex>>>& PruningPointSet, vector<unordered_map<vertex,vertex>>& PruningPointSet2, vector<unordered_set<int>>& ChangedLabels);
     int DisQueryLower1(int ID1, int ID2, vector<vector<pair<vertex,int>>> &Neighbors,vector<unordered_map<vertex,int>> &Label);
     int DisQueryVally(int ID1, int ID2, vector<vector<pair<vertex,int>>> &Neighbors,vector<unordered_map<vertex,int>> &Label);
     pair<int,int> DisQueryVally2(int ID1, int ID2, vector<vector<pair<vertex,int>>> &Neighbors,vector<unordered_map<vertex,int>> &Label);
+//    pair<int,int> DisQueryVallyVert2(int ID1, int ID2, vector<vector<pair<vertex,int>>> &Neighbors,vector<unordered_map<vertex,int>> &Label);
     int DisQueryPeak(int ID1, int ID2,vector<unordered_map<vertex,int>> &Label);
     pair<int,int> DisQueryPeak2(int ID1, int ID2,vector<unordered_map<vertex,int>> &Label);
+    int DisQueryLower1(int ID1, int ID2, vector<vector<pair<vertex,int>>> &Neighbors,vector<map<vertex,int>> &Label);
+    int DisQueryVally(int ID1, int ID2, vector<vector<pair<vertex,int>>> &Neighbors,vector<map<vertex,int>> &Label);
+    pair<int,int> DisQueryVally2(int ID1, int ID2, vector<vector<pair<vertex,int>>> &Neighbors,vector<map<vertex,int>> &Label);
+    int DisQueryPeak(int ID1, int ID2,vector<map<vertex,int>> &Label);
+    pair<int,int> DisQueryPeak2(int ID1, int ID2,vector<map<vertex,int>> &Label);
+
+    //For edge insertion
+    void EdgeInsertionPLL(int ID1, int ID2, int newW, vector<vector<pair<vertex,int>>> &Neighbors,vector<unordered_map<vertex,int>> &Label);
+    void EdgeInsertionPLL(int ID1, int ID2, int newW, vector<vector<pair<vertex,int>>> &Neighbors,vector<map<vertex,int>> &Label);
+    void VertexInsertPartiBatchUpdatePLL(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<vertex,int>>> &Neighbors);
+    void EdgeInsertPartiBatchUpdatePLL(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifOverlay, vector<pair<pair<int,int>,int>>& updatedSC);
+    void PPLLBatchUpdateEdgeInsert(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1);
+    void PPLLBatchUpdateEdgeInsertPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1);
+    void PPLLBatchUpdateVertexInsert(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1);
+    void PPLLBatchUpdateVertexInsertPre(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1);
 
     /// For PH2H
     void PH2HIndexConstruct(); //PH2H index construction
@@ -462,17 +534,21 @@ public:
     void insertEMTorder(int u,int v,int w);
 
 
-    void PH2HVertexOrdering(int type);
+    void VertexCutVertexOrdering();
+    void EdgeCutVertexOrdering(int type);
     void SketchGraphBuild();
     void OverlayOrderingBuild();
     void OverlayOrderingBuildBoundaryFirst(int nodenum, vector<vector<int>> Neighbor);
     void PartitionOrderingBuildMDE(bool ifParallel);
-    void OrderingAssemblyMDEBoundaryFirst(int pNum);
+    void PartitionOrderingBuildDegree(bool ifParallel);
+    void OrderingAssemblyMDEBoundaryFirst(string filename);
     void OrderingAssemblyMDE(int pNum);
     void OrderingAssemblyBoundaryFirst(int pNum);
     void SketchOrder(vector<vector<pair<int,int>>> Neighbor, vector<int> &vNodeOrderSketch);
-    void PartitionOrderingV(vector<int>& p);
-    void PartitionOrdering(int pid);
+    void PartitionOrderingMDEV(vector<int>& p);
+    void PartitionOrderingMDE(int pid);
+    void PartitionOrderingDegreeV(vector<int>& p);
+    void PartitionOrderingDegree(int pid);
     void deleteEOrderGenerate(int u,int v);
     void insertEOrderGenerate(int u,int v,int w);
 
@@ -489,10 +565,12 @@ public:
     int QueryPCHDebug(int ID1, int ID2, vector<vector<Node>>& Trees);
     int QueryPH2H(int ID1, int ID2);
     int QueryPPLL(int ID1, int ID2);
+    int QueryPPLLDebug(int ID1, int ID2);
 
 	//PH2H
     int QueryCore(int ID1, int ID2);
     int QueryH2HPartition(int ID1, int ID2, int PID);
+    int QueryH2HPartitionDebug(int ID1, int ID2, int PID);
     int QueryH2HPartitionPost(int ID1, int ID2, int PID);
     int QueryPartiCore(int ID1, int ID2);
     int QueryPartiCoreDebug(int ID1, int ID2);
@@ -514,10 +592,13 @@ public:
 
     //PPLL
     int QueryOverlayPLL(int ID1, int ID2);
+    int QueryOverlayPLLDebug(int ID1, int ID2);
     int QuerySamePartiPLL(int ID1, int ID2, vector<unordered_map<vertex,int>>& Labels);
+    int QuerySamePartiPLL(int ID1, int ID2, vector<map<vertex,int>>& Labels);
     int QueryPartiCorePLL(int ID1, int ID2);
     int QuerySamePartiPLLNo(int ID1, int ID2);
     int QueryPartiPartiPLL(int ID1, int ID2);
+    int QueryPartiPartiPLLDebug(int ID1, int ID2);
 
     void EffiCheck(string filename,int runtimes);
     int QueryDebug(int ID1, int ID2);
@@ -539,24 +620,39 @@ public:
     int BiDijkstra(int ID1, int ID2,vector<vector<pair<vertex,int>>> &Neighbor);
     int Astar(int ID1, int ID2,vector<vector<pair<vertex,int>>> &Neighbor);
     int EuclideanDis(int s, int t);
-    void RetrievePath(int ID1, int ID2, vector<int> & prece);
+    double EuclideanDis(pair<double,double> s, pair<double,double> t);
+    void RetrievePath(int ID1, int ID2, vector<int> & prece,vector<vector<pair<vertex,int>>> &Neighbor);
+    void RetrievePath(int ID1, int ID2, vector<int> & prece,vector<unordered_map<vertex,int>> &Neighbor);
     int DijkstraCore(int ID1, int ID2);
-
+    int DijkstraPath(int ID1, int ID2,vector<vector<pair<vertex,int>>> &Neighbor);
+    int DijkstraPath(int ID1, int ID2,vector<unordered_map<vertex,int>> &Neighbor);
 
     void EachNodeProBDis5H2H(int child,vector<int>& line,set<int>& vertexIDChL, map<int,int>& checkedDis);
     void eachNodeProcessIncrease1H2H(int children, vector<int>& line, int& changelabel);
     void PCHBatchUpdateDec(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PCHBatchUpdateEdgeInsert(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PCHBatchUpdateEdgeInsertPre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PCHBatchUpdateVertexInsert(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PCHBatchUpdateVertexInsertPre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
     void PCHBatchUpdateDecPre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
     void PH2HBatchUpdateDec(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
     void PH2HBatchUpdateDecPre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PH2HBatchUpdateVertexInsert(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PH2HBatchUpdateVertexInsertPre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PH2HBatchUpdateEdgeInsert(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PH2HBatchUpdateEdgeInsertPre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
     void PCHBatchUpdateInc(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PCHBatchUpdateEdgeDelete(vector<pair<pair<int, int>, pair<int, int>>> &wBatch, int batch_i, double &runT1);
+    void PCHBatchUpdateEdgeDeletePre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
     void PCHBatchUpdateIncPre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
     void PH2HBatchUpdateInc(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
     void PH2HBatchUpdateIncPre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PH2HBatchUpdateEdgeDelete(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
+    void PH2HBatchUpdateEdgeDeletePre(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, int batch_i, double& runT1);
     void IndexConstruction();
 
 	/// Index update
-    void IndexMaintenance(int updateType, int updateSize);
+    void IndexMaintenance(int updateType, int batchNum, int batchSize, double changeRatio);
     void DecreaseOverlay(int a,int b, int newW, vector<unordered_map<vertex,int>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax);
     void DecreaseParti(int a,int b, int newW, vector<vector<pair<int,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax);
     void EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, vector<Node> &Tree, vector<int> &rank);//map<int,int>& checkedDis,
@@ -567,10 +663,23 @@ public:
     void IncreaseParti(int a, int b, int oldW, int newW, vector<vector<pair<int,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax,vector<map<int, vector<pair<int,int>>>> &SCconNodesMT, vector<vector<int>> &VidtoTNid);
     void eachNodeProcessIncrease1Parti(int children, vector<int>& line, int& changelabel, vector<Node> &Tree, vector<int> &rank, vector<vector<int>> &VidtoTNid);
     void DecreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<int,int>> &Neighbor, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU);//batch decrease for overlay graph
+    void EdgeInsertOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<int,int>> &Neighbor, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU);
+    void EdgeInsertOverlayBatchCH(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<int,int>> &Neighbor, vector<Node> &Tree, vector<int> &rank, int heightMax);
     void DecreaseH2HBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>> &Neighbor, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU);
     void DecreaseOverlayBatchLabel(vector<Node> &Tree, vector<int> &rank, int heightMax, vector<int>& ProBeginVertexSet,set<int>& vertexIDChL);
     void DecreasePartiBatchUpdateCheck(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay);
     void DecreasePartiBatchUpdateCheckCH(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifOpt, vector<pair<pair<int,int>,int>>& updatedSC);
+    void EdgeInsertPartiBatchUpdateCheck(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifLabel, vector<pair<pair<int,int>,int>>& updatedSC);
+    void BottomUpNewShortcutInsertParti(int lid, int hid, int weight, vector<Node> &Tree, vector<int> &rank, int &newSCNum);
+    void BottomUpNewShortcutInsertPartiCH(int lid, int hid, int weight, vector<Node> &Tree, vector<int> &rank, int &newSCNum);
+    void BottomUpNewShortcutInsert(int lid, int hid, int weight, vector<Node> &Tree, vector<int> &rank, int &newSCNum);
+    void BottomUpNewShortcutInsertCH(int lid, int hid, int weight, vector<Node> &Tree, vector<int> &rank, int &newSCNum);
+    void EdgeInsertPartiBatchCH(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, vector<pair<pair<int,int>,int>>& updatedSC);
+    void EdgeInsertPartiBatchH2H(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, vector<pair<pair<int,int>,int>>& updatedSC, bool ifLabelU);
+    void EdgeInsertPartiBatchH2HPre(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU);
+    void EdgeInsertPartiBatchH2HPost(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<vertex,int>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU);
+    void VertexInsertPartiBatchUpdateCH(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch);
+    void VertexInsertPartiBatchUpdateH2H(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch);
     void DecreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, vector<pair<pair<int,int>,int>>& updatedSC, bool ifLabelU);
     void DecreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, vector<pair<pair<int,int>,int>>& updatedSC, bool ifLabelU, bool ifConstruct);
     void DecreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<int,int>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU);
@@ -579,12 +688,12 @@ public:
     void IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<int,int>> &Neighbor, vector<Node> &Tree, vector<int> &rank, int heightMax,vector<map<int, vector<pair<int,int>>>> &SCconNodesMT, vector<vector<int>> &VidtoTNid, bool ifLabelU);
     void IncreaseH2HBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>> &Neighbor, vector<Node> &Tree, vector<int> &rank, int heightMax,vector<map<int, vector<pair<int,int>>>> &SCconNodesMT, vector<vector<int>> &VidtoTNid, bool ifLabelU);
     void IncreaseOverlayBatchLabel(vector<Node> &Tree, vector<int> &rank, int heightMax, vector<int>& ProBeginVertexSet, vector<vector<int>> &VidtoTNid);
-    void IncreasePartiBatchUpdateCheck(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay);
-    void IncreasePartiBatchUpdateCheckCH(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifOpt,vector<pair<pair<int,int>,int>>& updatedSC);
+    void IncreasePartiBatchUpdateCheck(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<pair<pair<int,int>,pair<int,int>>>& weightOverlay, bool ifLabel,vector<pair<pair<int,int>,int>>& updatedSC);
     void IncreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax,vector<map<int, vector<pair<int,int>>>> &SCconNodesMT, vector<vector<int>> &VidtoTNid, vector<pair<pair<int,int>,int>>& updatedSC, bool ifLabelU);
     void IncreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax,vector<map<int, vector<pair<int,int>>>> &SCconNodesMT, vector<vector<int>> &VidtoTNid, vector<pair<pair<int,int>,int>>& updatedSC, bool ifLabelU);
     void IncreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<int,int>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax,vector<map<int, vector<pair<int,int>>>> &SCconNodesMT, vector<vector<int>> &VidtoTNid, bool ifLabelU);
     void IncreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU);
+    void EdgeDeletePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU);
     void IncreasePartiBatchLabel(vector<Node> &Tree, vector<int> &rank, int heightMax, vector<int>& ProBeginVertexSet, vector<vector<int>> &VidtoTNid);
 
 	/// Graph Preprocessing
@@ -595,12 +704,12 @@ public:
     void ReadUpdate3(string filename,vector<pair<pair<int,int>,tuple<int,int,int>>>& TestData);
 	void StainingMethod(int ID);
 	void ODGene(int num, string filename);
-    void ODGeneParti(int num, string filename);
+    void ODGeneParti(int num, string filename, double portion);
     void ODGeneSameParti(int num, string filename);
     void ODGeneCrossParti(int num, string filename);
 	void UpdateGene(int num, string filename);
     void QueryGenerationParti(bool ifSame);
-
+    void StructuralUpdateGeneration(int number);
 
     void WriteTreeIndexOverlay(string filename);
     void ReadTreeIndex(string file);
@@ -610,6 +719,12 @@ public:
     void ReadOrder(string filename);
     void CompareOrder(string filename1, string filename2);
     void GraphPartitionRead(string filename);
+    void GraphPartitionReadVertexCut(string filename);
+
+    void WriteCoreIndex(string file);
+    void ReadCoreIndex(string file);
+    void WriteCoreGraph(string graphfile);
+    void ReadCoreGraph(string filename);
 
     vector<int> DFS_CC(vector<map<int,int>> & Edges, set<int> set_A, set<int> & set_B, int nodenum);
     vector<int> DFS_CC(vector<vector<pair<int,int>>> & Edges, set<int> set_A, set<int> & set_B, int nodenum);

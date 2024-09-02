@@ -96,9 +96,55 @@ void Graph::AllPairBoundaryDisUpdate(bool ifParallel, bool ifIncrease, map<int, 
 
 }
 
+void Graph::AllPairBoundaryDisUpdate(bool ifParallel, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>>& partiBatch, map<pair<int, int>, pair<int, int>>& overlayBatch) {
+
+    if(ifParallel){
+//        cout<<"Multiple thread computation for all-pair boundary distance computation!"<<endl;
+        //multi-thread
+        if(threadnum<partiNum){
+            vector<vector<int>> processID;
+            processID.assign(threadnum, vector<int>());
+            vector<int> vertices;
+            for(int pid=0;pid<partiNum;++pid){
+                vertices.emplace_back(pid);
+            }
+            ThreadDistribute(vertices, processID);
+//            cout<<"Batch number: "<<processID[0].size()<<endl;
+            boost::thread_group thread;
+            for(auto j=0;j<processID.size();++j){
+                thread.add_thread(new boost::thread(&Graph::AllPairBoundaryDisUpdatePartiMapV, this, boost::ref(processID[j]), ifIncrease, boost::ref(partiBatch), boost::ref(overlayBatch)));
+            }
+            thread.join_all();
+        }
+        else{//thread number is sufficient
+            boost::thread_group thread;
+            for(auto j=0;j<partiNum;++j){
+                thread.add_thread(new boost::thread(&Graph::AllPairBoundaryDisUpdatePartiMap, this, j, ifIncrease, boost::ref(partiBatch), boost::ref(overlayBatch)));
+            }
+            thread.join_all();
+        }
+
+    }
+    else{
+        cout<<"Single thread computation!"<<endl;
+        //single-thread
+        for(int pid=0;pid<partiNum;++pid){
+//            cout<<"Partition "<<pid<<endl;
+            AllPairBoundaryDisUpdatePartiMap(pid,ifIncrease,partiBatch, overlayBatch);
+        }
+    }
+
+}
+
 void Graph::AllPairBoundaryDisComputePartiV(vector<int>& p) {
     for(auto it=p.begin();it!=p.end();++it){
         AllPairBoundaryDisComputeParti(*it);
+    }
+}
+
+void Graph::AllPairBoundaryDisUpdatePartiMapV(vector<int>& p, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>>& partiBatch, map<pair<int, int>, pair<int, int>>& overlayBatch) {
+    for(auto it=p.begin();it!=p.end();++it){
+        AllPairBoundaryDisUpdatePartiMap(*it, ifIncrease, partiBatch, overlayBatch);
     }
 }
 
@@ -218,9 +264,9 @@ void Graph::AllPairBoundaryDisUpdateParti(int pid, bool ifIncrease, map<int, vec
                 bid2=IDs[j];
                 if(NeighborsOverlay[bid1].find(bid2)!=NeighborsOverlay[bid1].end()){
                     if(NeighborsOverlay[bid1][bid2]<Dis[j]){
-//                        sm->wait();
+                        sm->wait();
                         overlayBatch.push_back({make_pair(bid1,bid2), make_pair(NeighborsOverlay[bid1][bid2],Dis[j])});
-//                        sm->notify();
+                        sm->notify();
 //                        NeighborsOverlay[bid1][bid2]=Dis[j];
                     }
                     else if(NeighborsOverlay[bid1][bid2]>Dis[j]){
@@ -276,9 +322,184 @@ void Graph::AllPairBoundaryDisUpdateParti(int pid, bool ifIncrease, map<int, vec
                 bid2=IDs[j];
                 if(NeighborsOverlay[bid1].find(bid2)!=NeighborsOverlay[bid1].end()){
                     if(NeighborsOverlay[bid1][bid2]>Dis[j]){
-//                        sm->wait();
+                        sm->wait();///
                         overlayBatch.push_back({make_pair(bid1,bid2), make_pair(NeighborsOverlay[bid1][bid2],Dis[j])});
-//                        sm->notify();
+                        sm->notify();
+//                        NeighborsOverlay[bid1][bid2]=Dis[j];
+                    }
+                    else if(NeighborsOverlay[bid1][bid2]<Dis[j]){
+                        cout<<"Wrong overlay! "<<bid1<<" "<<bid2<<" "<<NeighborsOverlay[bid1][bid2]<<" "<<Dis[j]<<endl; exit(1);
+                    }
+
+                }else{
+                    cout<<"Wrong overlay! Not found. "<<bid1<<" "<<bid2<<" "<<endl; exit(1);
+                }
+//                if(NeighborsOverlay[bid2].find(bid1)!=NeighborsOverlay[bid2].end()){
+//                    if(NeighborsOverlay[bid2][bid1]>Dis[j]){
+//                        NeighborsOverlay[bid2][bid1]=Dis[j];
+//                    }else if(NeighborsOverlay[bid2][bid1]<Dis[j]){
+//                        cout<<"Wrong overlay! "<<bid1<<" "<<bid2<<" "<<NeighborsOverlay[bid2][bid1]<<" "<<Dis[j]<<endl; exit(1);
+//                    }
+//                }else{
+//                    cout<<"Wrong overlay! Not found. "<<bid1<<" "<<bid2<<" "<<endl; exit(1);
+//                }
+            }
+            // Insert to partition graph
+            for(int j=0;j<IDs.size();++j){
+                bid2=IDs[j];
+                for(int p=0;p<NeighborsParti[bid1].size();++p){
+                    if(bid2 == NeighborsParti[bid1][p].first){
+                        if(NeighborsParti[bid1][p].second > Dis[j]){
+                            if(partiBatch.find(pid)==partiBatch.end()){//if not found
+                                sm->wait();
+                                partiBatch.insert({pid, vector<pair<pair<int, int>, pair<int, int>>>()});
+                                partiBatch[pid].emplace_back(make_pair(bid1,bid2), make_pair(NeighborsParti[bid1][p].second,Dis[j]));
+                                sm->notify();
+                            }else{//if found
+                                partiBatch[pid].emplace_back(make_pair(bid1,bid2), make_pair(NeighborsParti[bid1][p].second,Dis[j]));
+                            }
+//                            NeighborsParti[bid1][p].second = Dis[j];
+                        }else if(NeighborsParti[bid1][p].second < Dis[j]){
+                            cout<<"Wrong parti! "<<bid1<<" "<<bid2<<" "<<NeighborsParti[bid1][p].second<<" "<<Dis[j]<<endl; exit(1);
+                        }
+                    }
+                }
+//                for(int p=0;p<NeighborsParti[bid2].size();++p){
+//                    if(bid1 == NeighborsParti[bid2][p].first){
+//                        if(NeighborsParti[bid2][p].second > Dis[j]){
+//                            NeighborsParti[bid2][p].second = Dis[j];
+//                        }else if(NeighborsParti[bid2][p].second < Dis[j]){
+//                            cout<<"Wrong parti! "<<bid1<<" "<<bid2<<" "<<NeighborsParti[bid2][p].second<<" "<<Dis[j]<<endl; exit(1);
+//                        }
+//                    }
+//                }
+            }
+        }
+    }
+}
+
+void Graph::AllPairBoundaryDisUpdatePartiMap(int pid, bool ifIncrease, map<int, vector<pair<pair<int, int>, pair<int, int>>>>& partiBatch, map<pair<int, int>, pair<int, int>>& overlayBatch) {
+    int bid1,bid2;
+
+    for(int i=0;i<BoundVertex[pid].size();++i){
+        bid1=BoundVertex[pid][i];
+        vector<int> IDs;
+        for(int j=i+1;j<BoundVertex[pid].size();++j){
+            bid2=BoundVertex[pid][j];
+            IDs.push_back(bid2);
+        }
+        vector<int> Dis;
+        BoundaryDijkstra(bid1, IDs, Dis, Neighbor);
+        if(ifIncrease){
+            // Insert to overlay graph
+            for(int j=0;j<IDs.size();++j){
+                bid2=IDs[j];
+                if(NeighborsOverlay[bid1].find(bid2)!=NeighborsOverlay[bid1].end()){
+                    if(NeighborsOverlay[bid1][bid2]<Dis[j]){
+                        sm->wait();
+//                        overlayBatch.insert({make_pair(bid1,bid2), make_pair(NeighborsOverlay[bid1][bid2],Dis[j])});
+                        if(bid1<=bid2){
+                            if(overlayBatch.find(make_pair(bid1,bid2))==overlayBatch.end()){//if not found
+                                overlayBatch.insert({make_pair(bid1,bid2), make_pair(NeighborsOverlay[bid1][bid2],Dis[j])});
+                            }else {
+                                cout<<"exist update. "<<bid1<<" "<<bid2<<" "<<overlayBatch[make_pair(bid1,bid2)].second<<" "<<Dis[j]<<endl;
+                                if(overlayBatch[make_pair(bid1,bid2)].first!=NeighborsOverlay[bid1][bid2] || overlayBatch[make_pair(bid1,bid2)].second>Dis[j]){
+                                    overlayBatch[make_pair(bid1,bid2)]=make_pair(NeighborsOverlay[bid1][bid2],Dis[j]);
+                                }
+
+                            }
+                        }
+                        else{
+                            if(overlayBatch.find(make_pair(bid2,bid1))==overlayBatch.end()){//if not found
+                                overlayBatch.insert({make_pair(bid2,bid1), make_pair(NeighborsOverlay[bid1][bid2],Dis[j])});
+                            }else {
+                                cout<<"exist update. "<<bid2<<" "<<bid1<<" "<<overlayBatch[make_pair(bid2,bid1)].second<<" "<<Dis[j]<<endl;
+                                if(overlayBatch[make_pair(bid2,bid1)].first!=NeighborsOverlay[bid1][bid2] || overlayBatch[make_pair(bid2,bid1)].second>Dis[j]){
+                                    overlayBatch[make_pair(bid2,bid1)]=make_pair(NeighborsOverlay[bid1][bid2],Dis[j]);
+                                }
+
+                            }
+                        }
+                        sm->notify();
+//                        NeighborsOverlay[bid1][bid2]=Dis[j];
+                    }
+                    else if(NeighborsOverlay[bid1][bid2]>Dis[j]){
+                        cout<<"Wrong overlay! "<<bid1<<" "<<bid2<<" "<<NeighborsOverlay[bid1][bid2]<<" "<<Dis[j]<<endl; exit(1);
+                    }
+                }else{
+                    cout<<"Wrong overlay! Not found. "<<bid1<<" "<<bid2<<" "<<endl; exit(1);
+                }
+//                if(NeighborsOverlay[bid2].find(bid1)!=NeighborsOverlay[bid2].end()){
+//                    if(NeighborsOverlay[bid2][bid1]<Dis[j]){
+////                        NeighborsOverlay[bid2][bid1]=Dis[j];
+//                    }else if(NeighborsOverlay[bid2][bid1]>Dis[j]){
+//                        cout<<"Wrong overlay! "<<bid1<<" "<<bid2<<" "<<NeighborsOverlay[bid2][bid1]<<" "<<Dis[j]<<endl; exit(1);
+//                    }
+//
+//                }else{
+//                    cout<<"Wrong overlay! Not found. "<<bid1<<" "<<bid2<<" "<<endl; exit(1);
+//                }
+            }
+            // Insert to partition graph
+            for(int j=0;j<IDs.size();++j){
+                bid2=IDs[j];
+                for(int p=0;p<NeighborsParti[bid1].size();++p){
+                    if(bid2 == NeighborsParti[bid1][p].first){
+                        if(NeighborsParti[bid1][p].second < Dis[j]){
+                            if(partiBatch.find(pid)==partiBatch.end()){//if not found
+                                sm->wait();
+                                partiBatch.insert({pid, vector<pair<pair<int, int>, pair<int, int>>>()});
+                                partiBatch[pid].emplace_back(make_pair(bid1,bid2), make_pair(NeighborsParti[bid1][p].second,Dis[j]));
+                                sm->notify();
+                            }else{//if found
+                                partiBatch[pid].emplace_back(make_pair(bid1,bid2), make_pair(NeighborsParti[bid1][p].second,Dis[j]));
+                            }
+//                            NeighborsParti[bid1][p].second = Dis[j];
+                        }else if(NeighborsParti[bid1][p].second > Dis[j]){
+                            cout<<"Wrong parti! "<<bid1<<" "<<bid2<<" "<<NeighborsParti[bid1][p].second<<" "<<Dis[j]<<endl; exit(1);
+                        }
+                    }
+                }
+//                for(int p=0;p<NeighborsParti[bid2].size();++p){
+//                    if(bid1 == NeighborsParti[bid2][p].first){
+//                        if(NeighborsParti[bid2][p].second < Dis[j]){
+//                            NeighborsParti[bid2][p].second = Dis[j];
+//                        }else if(NeighborsParti[bid2][p].second > Dis[j]){
+//                            cout<<"Wrong parti! "<<bid1<<" "<<bid2<<" "<<NeighborsParti[bid2][p].second<<" "<<Dis[j]<<endl; exit(1);
+//                        }
+//                    }
+//                }
+            }
+        }else{//if decrease update
+            // Insert to overlay graph
+            for(int j=0;j<IDs.size();++j){
+                bid2=IDs[j];
+                if(NeighborsOverlay[bid1].find(bid2)!=NeighborsOverlay[bid1].end()){
+                    if(NeighborsOverlay[bid1][bid2]>Dis[j]){
+                        sm->wait();///
+                        if(bid1<=bid2){
+                            if(overlayBatch.find(make_pair(bid1,bid2))==overlayBatch.end()){//if not found
+                                overlayBatch.insert({make_pair(bid1,bid2), make_pair(NeighborsOverlay[bid1][bid2],Dis[j])});
+                            }else {
+                                cout<<"exist update. "<<bid1<<" "<<bid2<<" "<<overlayBatch[make_pair(bid1,bid2)].second<<" "<<Dis[j]<<endl;
+                                if(overlayBatch[make_pair(bid1,bid2)].first!=NeighborsOverlay[bid1][bid2] || overlayBatch[make_pair(bid1,bid2)].second>Dis[j]){
+                                    overlayBatch[make_pair(bid1,bid2)]=make_pair(NeighborsOverlay[bid1][bid2],Dis[j]);
+                                }
+
+                            }
+                        }
+                        else{
+                            if(overlayBatch.find(make_pair(bid2,bid1))==overlayBatch.end()){//if not found
+                                overlayBatch.insert({make_pair(bid2,bid1), make_pair(NeighborsOverlay[bid1][bid2],Dis[j])});
+                            }else {
+                                cout<<"exist update. "<<bid2<<" "<<bid1<<" "<<overlayBatch[make_pair(bid2,bid1)].second<<" "<<Dis[j]<<endl;
+                                if(overlayBatch[make_pair(bid2,bid1)].first!=NeighborsOverlay[bid1][bid2] || overlayBatch[make_pair(bid2,bid1)].second>Dis[j]){
+                                    overlayBatch[make_pair(bid2,bid1)]=make_pair(NeighborsOverlay[bid1][bid2],Dis[j]);
+                                }
+
+                            }
+                        }
+                        sm->notify();
 //                        NeighborsOverlay[bid1][bid2]=Dis[j];
                     }
                     else if(NeighborsOverlay[bid1][bid2]<Dis[j]){
@@ -493,53 +714,107 @@ void Graph::ThreadDistribute(vector<int>& vertices, vector<vector<int>>& process
 void Graph::ConstructBoundaryShortcut(int pid, bool ifCH){
     //boundary edges
     int ID1,ID2,weight;
-    if(ifCH){
-        for(int i=0;i<BoundVertex[pid].size();i++){
-            ID1=BoundVertex[pid][i];
-            for(int j=i+1;j<BoundVertex[pid].size();j++){
-                ID2=BoundVertex[pid][j];
-                weight=QueryCHPartition(ID1,ID2,pid,Trees);
-                NeighborsOverlay[ID1][ID2]=weight;
-                NeighborsOverlay[ID2][ID1]=weight;
+    if(ifFullOpt){//use overlay simplification optimization
+        if(ifCH){
+            for(int i=0;i<BoundVertex[pid].size();i++){
+                ID1=BoundVertex[pid][i];
+                if(fullyConnected[ID1]) continue;
+                for(int j=i+1;j<BoundVertex[pid].size();j++){
+                    ID2=BoundVertex[pid][j];
+                    if(fullyConnected[ID2]) continue;
+                    weight=QueryCHPartition(ID1,ID2,pid,Trees);
+                    NeighborsOverlay[ID1][ID2]=weight;
+                    NeighborsOverlay[ID2][ID1]=weight;
+                }
+            }
+        }
+        else{
+            for(int i=0;i<BoundVertex[pid].size();i++){
+                ID1=BoundVertex[pid][i];
+                if(fullyConnected[ID1]) continue;
+                for(int j=i+1;j<BoundVertex[pid].size();j++){
+                    ID2=BoundVertex[pid][j];
+                    if(fullyConnected[ID2]) continue;
+                    weight=QueryH2HPartition(ID1,ID2,pid);
+                    NeighborsOverlay[ID1][ID2]=weight;
+                    NeighborsOverlay[ID2][ID1]=weight;
+                }
             }
         }
     }
-    else{
-        for(int i=0;i<BoundVertex[pid].size();i++){
-            ID1=BoundVertex[pid][i];
-            for(int j=i+1;j<BoundVertex[pid].size();j++){
-                ID2=BoundVertex[pid][j];
-                weight=QueryH2HPartition(ID1,ID2,pid);
-                NeighborsOverlay[ID1][ID2]=weight;
-                NeighborsOverlay[ID2][ID1]=weight;
+    else{//not use overlay simplification optimization
+        if(ifCH){
+            for(int i=0;i<BoundVertex[pid].size();i++){
+                ID1=BoundVertex[pid][i];
+                for(int j=i+1;j<BoundVertex[pid].size();j++){
+                    ID2=BoundVertex[pid][j];
+                    weight=QueryCHPartition(ID1,ID2,pid,Trees);
+                    NeighborsOverlay[ID1][ID2]=weight;
+                    NeighborsOverlay[ID2][ID1]=weight;
+                }
+            }
+        }
+        else{
+            for(int i=0;i<BoundVertex[pid].size();i++){
+                ID1=BoundVertex[pid][i];
+                for(int j=i+1;j<BoundVertex[pid].size();j++){
+                    ID2=BoundVertex[pid][j];
+                    weight=QueryH2HPartition(ID1,ID2,pid);
+                    NeighborsOverlay[ID1][ID2]=weight;
+                    NeighborsOverlay[ID2][ID1]=weight;
+                }
             }
         }
     }
+
 
 }
-
 
 void Graph::ConstructBoundaryShortcutNoAllPair(int pid){
     //boundary edges
     int ID1,ID2,weight;
-    for(int i=0;i<BoundVertex[pid].size();i++){
-        ID1=BoundVertex[pid][i];
-        if(!NeighborCon[ID1].empty()){
-            for(auto it=NeighborCon[ID1].begin();it!=NeighborCon[ID1].end();++it){
-                ID2=it->first; weight=it->second.first;
-                if(!PartiTag[ID2].second){//if ID2 is not boundary vertex
-                    cout<<"Wrong for this shortcut! "<<ID1<<"("<<PartiTag[ID1].first<<","<<PartiTag[ID1].second<<") "<<ID2<<"("<<PartiTag[ID2].first<<","<<PartiTag[ID2].second<<")"<<endl; exit(1);//?
+    if(ifFullOpt){//with overlay optimization
+        for(int i=0;i<BoundVertex[pid].size();i++){
+            ID1=BoundVertex[pid][i];
+            if(fullyConnected[ID1]) continue;
+            if(!NeighborCon[ID1].empty()){
+                for(auto it=NeighborCon[ID1].begin();it!=NeighborCon[ID1].end();++it){
+                    ID2=it->first; weight=it->second.first;
+                    if(fullyConnected[ID2]) continue;
+                    if(!PartiTag[ID2].second){//if ID2 is not boundary vertex
+                        cout<<"Wrong for this shortcut! "<<ID1<<"("<<PartiTag[ID1].first<<","<<PartiTag[ID1].second<<") "<<ID2<<"("<<PartiTag[ID2].first<<","<<PartiTag[ID2].second<<")"<<endl; exit(1);//?
+                    }
+                    if(NeighborsOverlay[ID1].find(ID2)==NeighborsOverlay[ID1].end()){//if not found
+                        NeighborsOverlay[ID1][ID2]=weight;
+                        NeighborsOverlay[ID2][ID1]=weight;
+                    }else if(NeighborsOverlay[ID1][ID2]>weight){
+                        NeighborsOverlay[ID1][ID2]=weight;
+                        NeighborsOverlay[ID2][ID1]=weight;
+                    }
                 }
-                if(NeighborsOverlay[ID1].find(ID2)==NeighborsOverlay[ID1].end()){//if not found
-                    NeighborsOverlay[ID1][ID2]=weight;
-                    NeighborsOverlay[ID2][ID1]=weight;
-                }else if(NeighborsOverlay[ID1][ID2]>weight){
-                    NeighborsOverlay[ID1][ID2]=weight;
-                    NeighborsOverlay[ID2][ID1]=weight;
+            }
+        }
+    }else{
+        for(int i=0;i<BoundVertex[pid].size();i++){
+            ID1=BoundVertex[pid][i];
+            if(!NeighborCon[ID1].empty()){
+                for(auto it=NeighborCon[ID1].begin();it!=NeighborCon[ID1].end();++it){
+                    ID2=it->first; weight=it->second.first;
+                    if(!PartiTag[ID2].second){//if ID2 is not boundary vertex
+                        cout<<"Wrong for this shortcut! "<<ID1<<"("<<PartiTag[ID1].first<<","<<PartiTag[ID1].second<<") "<<ID2<<"("<<PartiTag[ID2].first<<","<<PartiTag[ID2].second<<")"<<endl; exit(1);//?
+                    }
+                    if(NeighborsOverlay[ID1].find(ID2)==NeighborsOverlay[ID1].end()){//if not found
+                        NeighborsOverlay[ID1][ID2]=weight;
+                        NeighborsOverlay[ID2][ID1]=weight;
+                    }else if(NeighborsOverlay[ID1][ID2]>weight){
+                        NeighborsOverlay[ID1][ID2]=weight;
+                        NeighborsOverlay[ID2][ID1]=weight;
+                    }
                 }
             }
         }
     }
+
 }
 void Graph::ConstructBoundaryShortcutV(vector<int> & p, bool ifAllPair, bool ifCH){
     if(ifAllPair){
@@ -590,7 +865,6 @@ void Graph::Construct_OverlayGraph(bool ifParallel, bool ifCH){
 
 
 }
-
 
 void Graph::Construct_OverlayGraphNoAllPair(bool ifParallel, bool ifCH){
     if(ifParallel){
@@ -1165,9 +1439,18 @@ void Graph::RepairPartitionIndexDecrease(int pid, map<int, vector<pair<pair<int,
     //boundary edges
     vector<pair<pair<int,int>,pair<int,int>>> weightsParti;//collect the changed edges on overlay graph
     weightsParti.clear();
+    vector<pair<pair<int,int>,pair<int,int>>> weightsPartiInsert;//collect the changed edges on overlay graph
 
     if(partiBatch.find(pid)!=partiBatch.end()){//if found
-        weightsParti=partiBatch[pid];
+        for(int i=0;i<partiBatch[pid].size();++i){
+            ID1=partiBatch[pid][i].first.first, ID2=partiBatch[pid][i].first.second;
+            if(NeighborsPartiPost[ID1].find(ID2)==NeighborsPartiPost[ID1].end()){//if not found
+                weightsPartiInsert.emplace_back(partiBatch[pid][i]);
+            }else{
+                weightsParti.emplace_back(partiBatch[pid][i]);
+            }
+        }
+//        weightsParti=partiBatch[pid];
     }
     if(algoChoice==CH){
         for(int i=0;i<BoundVertex[pid].size();i++){
@@ -1227,13 +1510,21 @@ void Graph::RepairPartitionIndexDecrease(int pid, map<int, vector<pair<pair<int,
         }
     }
 
+    if(!weightsPartiInsert.empty()){
+//        cout<<"weightsPartiInsert size: "<<weightsPartiInsert.size()<<endl;
+        bool ifLabel=false;
+        if(algoChoice==H2H){
+            ifLabel=true;
+        }
+        EdgeInsertPartiBatchH2HPost(pid,weightsPartiInsert, NeighborsPartiPost, TreesPost[pid], ranksPost[pid], heightMaxsPost[pid], ifLabel);
+    }
     if(!weightsParti.empty()){
 //        cout<<"Size of weightsParti of partition "<<pid<<" : "<<weightsParti.size()<<endl;
-        bool ifPost=false;
+        bool ifLabel=false;
         if(algoChoice==H2H){
-            ifPost=true;
+            ifLabel=true;
         }
-        DecreasePartiBatchPost(pid,weightsParti, NeighborsPartiPost, TreesPost[pid], ranksPost[pid], heightMaxsPost[pid], ifPost);
+        DecreasePartiBatchPost(pid,weightsParti, NeighborsPartiPost, TreesPost[pid], ranksPost[pid], heightMaxsPost[pid], ifLabel);
         ifRepaired[pid]=true;
     }
 
@@ -2481,32 +2772,40 @@ int Graph::QueryCoreDebug(int ID1, int ID2){
     int r1=rank[ID1], r2=rank[ID2];
     int LCA=LCAQueryOverlay(r1,r2);
     int d1,d2,ancestor1,ancestor2;
+    int dis=INF;
 
     cout<<"Overlay Query."<<endl;
 
     if(LCA==r1){
         cout<<"r1. Hub of QueryCore: "<<Tree[LCA].uniqueVertex<<endl;
-        return Tree[r2].dis[Tree[r1].pos.back()];
+        dis=Tree[r2].dis[Tree[r1].pos.back()];
+        cout<<dis<<" "<<DijkstraCore(ID1,ID2)<<" "<<Dijkstra(ID1,ID2,Neighbor)<<endl;
+        DijkstraPath(ID1,ID2,NeighborsOverlay);
+        DijkstraPath(ID1,ID2,Neighbor);
     }
     else if(LCA==r2){
         cout<<"r2. Hub of QueryCore: "<<Tree[LCA].uniqueVertex<<endl;
-        return Tree[r1].dis[Tree[r2].pos.back()];
+        dis=Tree[r1].dis[Tree[r2].pos.back()];
+        cout<<dis<<" "<<DijkstraCore(ID1,ID2)<<" "<<Dijkstra(ID1,ID2,Neighbor)<<endl;
+        DijkstraPath(ID1,ID2,NeighborsOverlay);
+        DijkstraPath(ID1,ID2,Neighbor);
     }
     else{
-        int tmp=INF;
         cout<<"LCA="<<LCA<<" "<<Tree[LCA].uniqueVertex<<endl;
         for(int i=0;i<Tree[LCA].pos.size();i++){
-            if(tmp>Tree[r1].dis[Tree[LCA].pos[i]]+Tree[r2].dis[Tree[LCA].pos[i]]){
+            if(dis>Tree[r1].dis[Tree[LCA].pos[i]]+Tree[r2].dis[Tree[LCA].pos[i]]){
                 d1=Tree[r1].dis[Tree[LCA].pos[i]], d2=Tree[r2].dis[Tree[LCA].pos[i]];
                 ancestor1=Tree[r1].vAncestor[Tree[LCA].pos[i]], ancestor2=Tree[r2].vAncestor[Tree[LCA].pos[i]];
-                tmp=d1+d2;
-                cout<<ancestor1<<"("<<NodeOrder[ancestor1]<<") "<<ancestor2<<"("<<NodeOrder[ancestor2]<<") "<<tmp<<endl;
+                dis=d1+d2;
+                cout<<ancestor1<<"("<<NodeOrder[ancestor1]<<") "<<ancestor2<<"("<<NodeOrder[ancestor2]<<") "<<dis<<endl;
 
             }
         }
         cout<<"Hub of QueryCore: "<<ancestor1<<"("<<NodeOrder[ancestor1]<<") "<<ancestor2<<"("<<NodeOrder[ancestor2]<<")"<< endl;
-        return tmp;
+        DijkstraPath(ID1,ID2,NeighborsOverlay);
+        DijkstraPath(ID1,ID2,Neighbor);
     }
+    return dis;
 }
 
 //Case 2: one core, one tree
@@ -2521,6 +2820,7 @@ int Graph::QueryPartiCore(int ID1, int ID2){//ID1 partition, ID2 core
             bid=*it;
             dis1= QueryH2HPartition(ID1,bid,pid);
             dis2= QueryCore(bid,ID2);
+//            cout<<ID1<<" "<<bid<<" "<<ID2<<": "<<dis1<<" "<<dis2<<" "<<dis1+dis2<<" "<<d<<endl;
             if(d>dis1+dis2)
                 d=dis1+dis2;
         }
@@ -2548,11 +2848,13 @@ int Graph::QueryPartiCoreDebug(int ID1, int ID2){//ID1 partition, ID2 core
     if(PSPStrategy==NoBoundary || PSPStrategy==PreBoundary){
         for(auto it=BoundVertex[pid].begin();it!=BoundVertex[pid].end();++it){
             bid=*it;
+//            dis1= QueryH2HPartitionDebug(ID1,bid,pid);
             dis1= QueryH2HPartition(ID1,bid,pid);
             dis2= QueryCore(bid,ID2);
+            cout<<bid<<": "<<dis1<<" "<<dis2<<" "<<d<<endl;
             if(d>dis1+dis2){
                 d=dis1+dis2;
-                cout<<bid<<": "<<dis1<<" "<<dis2<<" "<<d<<endl;
+//                cout<<bid<<": "<<dis1<<" "<<dis2<<" "<<d<<endl;
                 finalbid=bid, finaldis1=dis1, finaldis2=dis2;
             }
 
@@ -2573,7 +2875,10 @@ int Graph::QueryPartiCoreDebug(int ID1, int ID2){//ID1 partition, ID2 core
 
     int dDijk_s=Dijkstra(ID1,finalbid,Neighbor), dDijk_t=Dijkstra(finalbid,ID2,Neighbor);
     cout<<ID1<<" "<<finalbid<<"("<<NodeOrder[finalbid]<<","<<PartiTag[finalbid].first<<","<<PartiTag[finalbid].second<<") "<<ID2<<" : "<<finaldis1<<" "<<finaldis2<<" "<<d<<" ; "<<dDijk_s<<" "<<dDijk_t<<" "<<Dijkstra(ID1,ID2,Neighbor)<<endl;
-
+    if(finaldis2==0){
+        QueryH2HPartitionDebug(ID1,ID2,pid);
+    }
+    DijkstraPath(ID1,ID2,Neighbor);
     return d;
 }
 
@@ -2589,8 +2894,8 @@ int Graph::QueryPartiParti(int ID1, int ID2){//both are within the partition
 
     }else{//if in different partitions
 //        cout<<"Parti-Parti: "<<pid1<<" "<<pid2<<endl;
-        vector<int> B1=BoundVertex[pid1];
-        vector<int> B2=BoundVertex[pid2];
+//        vector<int> B1=BoundVertex[pid1];
+//        vector<int> B2=BoundVertex[pid2];
 
         map<int,int> m1,m2;
         m1.clear();
@@ -2598,39 +2903,41 @@ int Graph::QueryPartiParti(int ID1, int ID2){//both are within the partition
         int bID1, bID2, tempdis;
         int b1,b2,d1,d2;
 
+//        qBNum=qBNum+BoundVertex[pid1].size()+BoundVertex[pid2].size();
         if(PSPStrategy==NoBoundary || PSPStrategy==PreBoundary){
-            for(int i=0;i<B1.size();i++){
-                bID1=B1[i];
+            for(int i=0;i<BoundVertex[pid1].size();i++){
+                bID1=BoundVertex[pid1][i];
                 m1.insert(make_pair(bID1, QueryH2HPartition(ID1,bID1,pid1)));
             }
-            for(int j=0;j<B2.size();j++){
-                bID2=B2[j];
+            for(int j=0;j<BoundVertex[pid2].size();j++){
+                bID2=BoundVertex[pid2][j];
                 m2.insert(make_pair(bID2,QueryH2HPartition(ID2,bID2,pid2)));
             }
         }else if(PSPStrategy==PostBoundary){
-            for(int i=0;i<B1.size();i++){
-                bID1=B1[i];
+            for(int i=0;i<BoundVertex[pid1].size();i++){
+                bID1=BoundVertex[pid1][i];
                 m1.insert(make_pair(bID1, QueryH2HPartitionPost(ID1,bID1,pid1)));
             }
-            for(int j=0;j<B2.size();j++){
-                bID2=B2[j];
+            for(int j=0;j<BoundVertex[pid2].size();j++){
+                bID2=BoundVertex[pid2][j];
                 m2.insert(make_pair(bID2,QueryH2HPartitionPost(ID2,bID2,pid2)));
             }
         }
 
-
-        for(int k=0;k<B1.size();k++){
-            bID1=B1[k];
+        qBNum=qBNum+BoundVertex[pid1].size()*BoundVertex[pid2].size();
+        for(int k=0;k<BoundVertex[pid1].size();k++){
+            bID1=BoundVertex[pid1][k];
 
             if(m1[bID1]>d)
                 continue;
 
-            for(int z=0;z<B2.size();z++){
-                bID2=B2[z];
+            for(int z=0;z<BoundVertex[pid2].size();z++){
+                bID2=BoundVertex[pid2][z];
 
                 if(m2[bID2]>d)
                     continue;
 
+//                qBNum++;
                 tempdis=m1[bID1]+QueryCore(bID1,bID2)+m2[bID2];
                 if(tempdis<d){
                     d=tempdis;
@@ -2659,7 +2966,7 @@ int Graph::QuerySameParti(int ID1, int ID2){//both are within the partition
         int temp_dis = QueryH2HPartition(ID1,ID2,pid1);/// d2 may be wrong sometimes
         if(temp_dis<d)//QueryH2HPartition(ID1,ID2,pid1)
             d=temp_dis;//QueryH2HPartition(ID1,ID2,pid1);
-        vector<int> B=BoundVertex[pid1];
+//        vector<int> B=BoundVertex[pid1];
         map<int,int> m1,m2;
         m1.clear();
         m2.clear();
@@ -2667,8 +2974,8 @@ int Graph::QuerySameParti(int ID1, int ID2){//both are within the partition
         B1.clear();
         B2.clear();
         int bID,d1,d2;
-        for(int i=0;i<B.size();i++){
-            bID=B[i];
+        for(int i=0;i<BoundVertex[pid1].size();i++){
+            bID=BoundVertex[pid1][i];
             d1=QueryH2HPartition(ID1,bID,pid1);
             d2=QueryH2HPartition(ID2,bID,pid1);
 
@@ -3042,22 +3349,25 @@ int Graph::QueryPartiCoreCH(int ID1, int ID2){//ID1: partition vertex
             }
             //}else{
 //            for(auto out=NeighborConOverlay[topNodeIDForward].begin();out!=NeighborConOverlay[topNodeIDForward].end();out++){
-            rForward=rank[topNodeIDForward];
-            if(rForward!=-1){
-                for(auto out=Tree[rForward].vert.begin();out!=Tree[rForward].vert.end();out++){
-                    neighborNodeID = (*out).first;
-                    neighborLength = (*out).second.first;
+            if(PartiTag[topNodeIDForward].second){
+                rForward=rank[topNodeIDForward];
+                if(rForward!=-1){
+                    for(auto out=Tree[rForward].vert.begin();out!=Tree[rForward].vert.end();out++){
+                        neighborNodeID = (*out).first;
+                        neighborLength = (*out).second.first;
 
-                    int df = vDistanceForward[topNodeIDForward] + neighborLength;
-                    if(!vVisitedF[neighborNodeID]){
-                        if(vDistanceForward[neighborNodeID] > df){
-                            //if(neighborNodeID==37783) cout<<"neighdis "<<vDistanceForward[neighborNodeID]<<" adddis "<<df<<endl;
-                            vDistanceForward[neighborNodeID] = df;
-                            fHeapForward.update(neighborNodeID, df);
+                        int df = vDistanceForward[topNodeIDForward] + neighborLength;
+                        if(!vVisitedF[neighborNodeID]){
+                            if(vDistanceForward[neighborNodeID] > df){
+                                //if(neighborNodeID==37783) cout<<"neighdis "<<vDistanceForward[neighborNodeID]<<" adddis "<<df<<endl;
+                                vDistanceForward[neighborNodeID] = df;
+                                fHeapForward.update(neighborNodeID, df);
+                            }
                         }
                     }
                 }
             }
+
 
             //}
 
@@ -3172,22 +3482,25 @@ int Graph::QueryPartiPartiCH(int ID1, int ID2) {//ID1 and ID2 partition vertices
             }
             //}else{
 //            for(auto out=NeighborConOverlay[topNodeIDForward].begin();out!=NeighborConOverlay[topNodeIDForward].end();out++){
-            rForward=rank[topNodeIDForward];
-            if(rForward!=-1){
-                for(auto out=Tree[rForward].vert.begin();out!=Tree[rForward].vert.end();out++){
-                    neighborNodeID = (*out).first;
-                    neighborLength = (*out).second.first;
+            if(PartiTag[topNodeIDForward].second){
+                rForward=rank[topNodeIDForward];
+                if(rForward!=-1){
+                    for(auto out=Tree[rForward].vert.begin();out!=Tree[rForward].vert.end();out++){
+                        neighborNodeID = (*out).first;
+                        neighborLength = (*out).second.first;
 
-                    int df = vDistanceForward[topNodeIDForward] + neighborLength;
-                    if(!vVisitedF[neighborNodeID]){
-                        if(vDistanceForward[neighborNodeID] > df){
-                            //if(neighborNodeID==37783) cout<<"neighdis "<<vDistanceForward[neighborNodeID]<<" adddis "<<df<<endl;
-                            vDistanceForward[neighborNodeID] = df;
-                            fHeapForward.update(neighborNodeID, df);
+                        int df = vDistanceForward[topNodeIDForward] + neighborLength;
+                        if(!vVisitedF[neighborNodeID]){
+                            if(vDistanceForward[neighborNodeID] > df){
+                                //if(neighborNodeID==37783) cout<<"neighdis "<<vDistanceForward[neighborNodeID]<<" adddis "<<df<<endl;
+                                vDistanceForward[neighborNodeID] = df;
+                                fHeapForward.update(neighborNodeID, df);
+                            }
                         }
                     }
                 }
             }
+
 
             //}
 
@@ -3226,29 +3539,28 @@ int Graph::QueryPartiPartiCH(int ID1, int ID2) {//ID1 and ID2 partition vertices
                     }
                 }
             }
+            if(PartiTag[topNodeIDBackward].second){
+                rBackward=rank[topNodeIDBackward];
+                if(rBackward!=-1) {
+                    for (auto in = Tree[rBackward].vert.begin(); in != Tree[rBackward].vert.end(); in++) {
+                        neighborNodeID = (*in).first;
+                        neighborLength = (*in).second.first;
 
-            rBackward=rank[topNodeIDBackward];
-            if(rBackward!=-1) {
-                for (auto in = Tree[rBackward].vert.begin(); in != Tree[rBackward].vert.end(); in++) {
-                    neighborNodeID = (*in).first;
-                    neighborLength = (*in).second.first;
-
-                    int db = vDistanceBackward[topNodeIDBackward] + neighborLength;
-                    if (!vVisitedB[neighborNodeID]) {
-                        if (vDistanceBackward[neighborNodeID] > db) {
-                            vDistanceBackward[neighborNodeID] = db;
-                            fHeapBackward.update(neighborNodeID, db);
+                        int db = vDistanceBackward[topNodeIDBackward] + neighborLength;
+                        if (!vVisitedB[neighborNodeID]) {
+                            if (vDistanceBackward[neighborNodeID] > db) {
+                                vDistanceBackward[neighborNodeID] = db;
+                                fHeapBackward.update(neighborNodeID, db);
+                            }
                         }
                     }
                 }
             }
+
         }
     }
     return d;
 }
-
-
-
 
 //Query within one partition, no-boundary
 int Graph::QueryH2HPartition(int ID1, int ID2, int PID){
@@ -3256,22 +3568,79 @@ int Graph::QueryH2HPartition(int ID1, int ID2, int PID){
     if(PartiTag[ID1].first!=PID || PartiTag[ID2].first!=PID){
         cout<<"Wrong! ID1 and ID2 are not in the same partition! "<<PartiTag[ID1].first<<" "<<PartiTag[ID2].first<<" "<<PID<<endl; exit(1);
     }
+    int dis=INF;
+    int dis1, dis2, dis1Final, dis2Final, hub;
     int r1=ranks[PID][IDMap[ID1]], r2=ranks[PID][IDMap[ID2]];
 //    cout<<"ID1: "<<ID1<<" "<<IDMap[ID1]<<" "<<r1<<" ; ID2: "<<ID2<<" "<<IDMap[ID2]<<" "<<r2<<endl;
     int LCA=LCAQueryPartition(r1,r2,PID);
 //    cout<<"LCA: "<<LCA<<endl;
-    if(LCA==r1)
-        return Trees[PID][r2].dis[Trees[PID][r1].pos.back()];
-    else if(LCA==r2)
-        return Trees[PID][r1].dis[Trees[PID][r2].pos.back()];
-    else{
-        int tmp=INF;
-        for(int i=0;i<Trees[PID][LCA].pos.size();i++){
-            if(tmp>Trees[PID][r1].dis[Trees[PID][LCA].pos[i]]+Trees[PID][r2].dis[Trees[PID][LCA].pos[i]])
-                tmp=Trees[PID][r1].dis[Trees[PID][LCA].pos[i]]+Trees[PID][r2].dis[Trees[PID][LCA].pos[i]];
-        }
-        return tmp;
+    if(LCA==r1){
+        dis = Trees[PID][r2].dis[Trees[PID][r1].pos.back()];
+//        cout<<"r1 "<<dis<<" "<<Dijkstra(ID1,ID2,Neighbor)<<endl;
     }
+    else if(LCA==r2){
+        dis = Trees[PID][r1].dis[Trees[PID][r2].pos.back()];
+//        cout<<"r2 "<<dis<<" "<<Dijkstra(ID1,ID2,Neighbor)<<endl;
+    }
+    else{
+
+        for(int i=0;i<Trees[PID][LCA].pos.size();i++){
+            dis1=Trees[PID][r1].dis[Trees[PID][LCA].pos[i]], dis2=Trees[PID][r2].dis[Trees[PID][LCA].pos[i]];
+            if(dis>dis1+dis2){
+                dis=dis1+dis2;
+                dis1Final=dis1, dis2Final=dis2;
+                hub=Trees[PID][r1].vAncestor[Trees[PID][LCA].pos[i]];
+            }
+
+        }
+//        int dDijk_s=Dijkstra(ID1,hub,Neighbor), dDijk_t=Dijkstra(hub,ID2,Neighbor);
+//        cout<<ID1<<" "<<hub<<"("<<NodeOrder[hub]<<","<<PartiTag[hub].first<<","<<PartiTag[hub].second<<") "<<ID2<<" : "<<dis1Final<<" "<<dis2Final<<" "<<dis<<" ; "<<dDijk_s<<" "<<dDijk_t<<" "<<Dijkstra(ID1,ID2,Neighbor)<<endl;
+    }
+    return dis;
+}
+
+int Graph::QueryH2HPartitionDebug(int ID1, int ID2, int PID){
+    if(ID1==ID2) return 0;
+    if(PartiTag[ID1].first!=PID || PartiTag[ID2].first!=PID){
+        cout<<"Wrong! ID1 and ID2 are not in the same partition! "<<PartiTag[ID1].first<<" "<<PartiTag[ID2].first<<" "<<PID<<endl; exit(1);
+    }
+    int dis=INF;
+    int dis1, dis2, dis1Final, dis2Final, hub;
+    int r1=ranks[PID][IDMap[ID1]], r2=ranks[PID][IDMap[ID2]];
+//    cout<<"ID1: "<<ID1<<" "<<IDMap[ID1]<<" "<<r1<<" ; ID2: "<<ID2<<" "<<IDMap[ID2]<<" "<<r2<<endl;
+    int LCA=LCAQueryPartition(r1,r2,PID);
+//    cout<<"LCA: "<<LCA<<endl;
+    bool flag=false;
+//    if(ID1==10 && ID2==768){
+//        cout<<"Find. "<<ID1<<" "<<ID2<<endl;
+        flag=true;
+//    }
+    if(LCA==r1){
+        dis = Trees[PID][r2].dis[Trees[PID][r1].pos.back()];
+        if(flag)
+            cout<<"r1 "<<dis<<" "<<Dijkstra(ID1,ID2,Neighbor)<<endl;
+    }
+    else if(LCA==r2){
+        dis = Trees[PID][r1].dis[Trees[PID][r2].pos.back()];
+        if(flag)
+            cout<<"r2 "<<dis<<" "<<Dijkstra(ID1,ID2,Neighbor)<<endl;
+    }
+    else{
+
+        for(int i=0;i<Trees[PID][LCA].pos.size();i++){
+            dis1=Trees[PID][r1].dis[Trees[PID][LCA].pos[i]], dis2=Trees[PID][r2].dis[Trees[PID][LCA].pos[i]];
+            if(dis>dis1+dis2){
+                dis=dis1+dis2;
+                dis1Final=dis1, dis2Final=dis2;
+                hub=Trees[PID][r1].vAncestor[Trees[PID][LCA].pos[i]];
+            }
+
+        }
+        int dDijk_s=Dijkstra(ID1,hub,Neighbor), dDijk_t=Dijkstra(hub,ID2,Neighbor);
+        cout<<ID1<<" "<<hub<<"("<<NodeOrder[hub]<<","<<PartiTag[hub].first<<","<<PartiTag[hub].second<<") "<<ID2<<" : "<<dis1Final<<" "<<dis2Final<<" "<<dis<<" ; "<<dDijk_s<<" "<<dDijk_t<<" "<<Dijkstra(ID1,ID2,Neighbor)<<endl;
+//        DijkstraPath(ID1,ID2,Neighbor);
+    }
+    return dis;
 }
 
 //Query within one partition, no-boundary
@@ -3531,7 +3900,8 @@ void Graph::DecreaseOverlay(int a,int b, int newW, vector<unordered_map<vertex,i
 
 void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, vector<Node> &Tree, vector<int> &rank){
     bool ProIDdisCha=false;
-
+    vector<int> cntNew(line.size(),0);
+    vector<bool> flagUpdate(line.size(),false);
     if(Tree[child].DisRe.size()!=0){
         for(int k=0;k<Tree[child].vert.size();k++){
             int b=Tree[child].vert[k].first, bH=Tree[rank[b]].height-1,vbW=Tree[child].vert[k].second.first;
@@ -3542,7 +3912,19 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
                         if(Tree[child].dis[i]>vbW+Tree[rank[b]].dis[i]){
                             Tree[child].dis[i]=vbW+Tree[rank[b]].dis[i];
                             Tree[child].FN[i]=false;
+                            Tree[child].cnt[i]=1;//new
                             ProIDdisCha=true;
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[b]].dis[i]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];//use cntNew to redress the cnt value since the edge decrease may lead to more ways for dis (i.e., increase the cnt)
+                            }
                         }
                     }
                     for(int i=bH+1;i<line.size();i++){
@@ -3550,7 +3932,19 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
                         if(Tree[child].dis[i]>vbW+Tree[rank[line[i]]].dis[bH]){
                             Tree[child].dis[i]=vbW+Tree[rank[line[i]]].dis[bH];
                             Tree[child].FN[i]=false;
+                            Tree[child].cnt[i]=1;//new
                             ProIDdisCha=true;
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[line[i]]].dis[bH]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];
+                            }
                         }
                     }
 
@@ -3562,7 +3956,19 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
                             if(Tree[child].dis[i]>vbW+Tree[rank[b]].dis[i]){
                                 Tree[child].dis[i]=vbW+Tree[rank[b]].dis[i];
                                 Tree[child].FN[i]=false;
+                                Tree[child].cnt[i]=1;//new
                                 ProIDdisCha=true;
+                                flagUpdate[i]=true;
+                                cntNew[i]=1;
+                            }
+                            else if(Tree[child].dis[i]==vbW+Tree[rank[b]].dis[i]){
+                                cntNew[i]++;
+                                if(flagUpdate[i]) {
+                                    Tree[child].cnt[i]+=1;//new
+                                }
+                                else if(cntNew[i]>Tree[child].cnt[i]){
+                                    Tree[child].cnt[i]=cntNew[i];
+                                }
                             }
                         }
                     }
@@ -3571,7 +3977,19 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
                         if(Tree[child].dis[i]>vbW+Tree[rank[line[i]]].dis[bH]){
                             Tree[child].dis[i]=vbW+Tree[rank[line[i]]].dis[bH];
                             Tree[child].FN[i]=false;
+                            Tree[child].cnt[i]=1;//new
                             ProIDdisCha=true;
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[line[i]]].dis[bH]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];
+                            }
                         }
                     }
 
@@ -3588,7 +4006,19 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
                         if(Tree[child].dis[i]>vbW+Tree[rank[b]].dis[i]){
                             Tree[child].dis[i]=vbW+Tree[rank[b]].dis[i];
                             Tree[child].FN[i]=false;
+                            Tree[child].cnt[i]=1;//new
                             ProIDdisCha=true;
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[b]].dis[i]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];
+                            }
                         }
                     }
                 }
@@ -3597,7 +4027,19 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
                     if(Tree[child].dis[i]>vbW+Tree[rank[line[i]]].dis[bH]){
                         Tree[child].dis[i]=vbW+Tree[rank[line[i]]].dis[bH];
                         Tree[child].FN[i]=false;
+                        Tree[child].cnt[i]=1;//new
                         ProIDdisCha=true;
+                        flagUpdate[i]=true;
+                        cntNew[i]=1;
+                    }
+                    else if(Tree[child].dis[i]==vbW+Tree[rank[line[i]]].dis[bH]){
+                        cntNew[i]++;
+                        if(flagUpdate[i]) {
+                            Tree[child].cnt[i]+=1;//new
+                        }
+                        else if(cntNew[i]>Tree[child].cnt[i]){
+                            Tree[child].cnt[i]=cntNew[i];
+                        }
                     }
                 }
             }
@@ -3785,7 +4227,8 @@ void Graph::EachNodeProBDis5Parti(int child,vector<int>& line,set<int>& vertexID
     bool ProIDdisCha=false;
     int childID=Tree[child].uniqueVertex;
     int bHeight=BoundVertex[PartiTag[childID].first].size();
-
+    vector<int> cntNew(line.size(),0);
+    vector<bool> flagUpdate(line.size(),false);
     if(Tree[child].DisRe.size()!=0){
         for(int k=0;k<Tree[child].vert.size();k++){
             int b=Tree[child].vert[k].first, bH=Tree[rank[IDMap[b]]].height-1,vbW=Tree[child].vert[k].second.first;
@@ -3793,25 +4236,49 @@ void Graph::EachNodeProBDis5Parti(int child,vector<int>& line,set<int>& vertexID
             if(Tree[child].FN[bH]){
                 if(Tree[child].DisRe.find(b)!=Tree[child].DisRe.end()){//all ancestor check
                     for(int i=0;i<bH;i++){
+//                        if(childID==1204 && Tree[child].vAncestor[i]==2218){
+//                            cout<<"Find! "<<childID<<" "<<Tree[child].vAncestor[i]<<" "<<Tree[child].dis[i]<<endl;
+//                        }
 //                        checkedDis.insert(make_pair(child,i));
                         if(Tree[child].dis[i]>vbW+Tree[rank[bM]].dis[i]){
                             Tree[child].dis[i]=vbW+Tree[rank[bM]].dis[i];
                             Tree[child].FN[i]=false;
+                            Tree[child].cnt[i]=1;//new
                             ProIDdisCha=true;
-//                            if(i<bHeight){
-//                                vUpdated[childID] = true;
-//                            }
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[bM]].dis[i]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];//use cntNew to redress the cnt value since the edge decrease may lead to more ways for dis (i.e., increase the cnt)
+                            }
                         }
                     }
                     for(int i=bH+1;i<line.size();i++){
+//                        if(childID==1204 && Tree[child].vAncestor[i]==2218){
+//                            cout<<"Find! "<<childID<<" "<<Tree[child].vAncestor[i]<<" "<<Tree[child].dis[i]<<endl;
+//                        }
 //                        checkedDis.insert(make_pair(child,i));
                         if(Tree[child].dis[i]>vbW+Tree[rank[IDMap[line[i]]]].dis[bH]){
                             Tree[child].dis[i]=vbW+Tree[rank[IDMap[line[i]]]].dis[bH];
                             Tree[child].FN[i]=false;
+                            Tree[child].cnt[i]=1;//new
                             ProIDdisCha=true;
-//                            if(i<bHeight){
-//                                vUpdated[childID] = true;
-//                            }
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[IDMap[line[i]]]].dis[bH]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];
+                            }
                         }
                     }
 
@@ -3819,26 +4286,50 @@ void Graph::EachNodeProBDis5Parti(int child,vector<int>& line,set<int>& vertexID
 
                     if(vertexIDChL.find(b)!=vertexIDChL.end()){
                         for(int i=0;i<bH;i++){
+//                            if(childID==1204 && Tree[child].vAncestor[i]==2218){
+//                                cout<<"Find2! "<<childID<<" "<<Tree[child].vAncestor[i]<<endl;
+//                            }
 //                            checkedDis.insert(make_pair(child,i));
                             if(Tree[child].dis[i]>vbW+Tree[rank[bM]].dis[i]){
                                 Tree[child].dis[i]=vbW+Tree[rank[bM]].dis[i];
                                 Tree[child].FN[i]=false;
+                                Tree[child].cnt[i]=1;//new
                                 ProIDdisCha=true;
-//                                if(i<bHeight){
-//                                    vUpdated[childID] = true;
-//                                }
+                                flagUpdate[i]=true;
+                                cntNew[i]=1;
+                            }
+                            else if(Tree[child].dis[i]==vbW+Tree[rank[bM]].dis[i]){
+                                cntNew[i]++;
+                                if(flagUpdate[i]) {
+                                    Tree[child].cnt[i]+=1;//new
+                                }
+                                else if(cntNew[i]>Tree[child].cnt[i]){
+                                    Tree[child].cnt[i]=cntNew[i];
+                                }
                             }
                         }
                     }
                     for(int i=bH+1;i<line.size();i++){
+//                        if(childID==1204 && Tree[child].vAncestor[i]==2218){
+//                            cout<<"Find2! "<<childID<<" "<<Tree[child].vAncestor[i]<<endl;
+//                        }
 //                        checkedDis.insert(make_pair(child,i));
                         if(Tree[child].dis[i]>vbW+Tree[rank[IDMap[line[i]]]].dis[bH]){
                             Tree[child].dis[i]=vbW+Tree[rank[IDMap[line[i]]]].dis[bH];
                             Tree[child].FN[i]=false;
+                            Tree[child].cnt[i]=1;//new
                             ProIDdisCha=true;
-//                            if(i<bHeight){
-//                                vUpdated[childID] = true;
-//                            }
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[IDMap[line[i]]]].dis[bH]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];
+                            }
                         }
                     }
 
@@ -3852,26 +4343,50 @@ void Graph::EachNodeProBDis5Parti(int child,vector<int>& line,set<int>& vertexID
             if(Tree[child].FN[bH]){
                 if(vertexIDChL.find(b)!=vertexIDChL.end()){
                     for(int i=0;i<bH;i++){
+//                        if(childID==1204 && Tree[child].vAncestor[i]==2218){
+//                            cout<<"Find3.1! "<<childID<<" "<<Tree[child].vAncestor[i]<<" "<<Tree[child].dis[i]<<" "<<vbW+Tree[rank[bM]].dis[i]<<endl;
+//                        }
 //                        checkedDis.insert(make_pair(child,i));
                         if(Tree[child].dis[i]>vbW+Tree[rank[bM]].dis[i]){
                             Tree[child].dis[i]=vbW+Tree[rank[bM]].dis[i];
                             Tree[child].FN[i]=false;
+                            Tree[child].cnt[i]=1;//new
                             ProIDdisCha=true;
-//                            if(i<bHeight){
-//                                vUpdated[childID] = true;
-//                            }
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[bM]].dis[i]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];
+                            }
                         }
                     }
                 }
                 for(int i=bH+1;i<line.size();i++){
+//                    if(childID==1204 && Tree[child].vAncestor[i]==2218){
+//                        cout<<"Find3.2! "<<childID<<" "<<Tree[child].vAncestor[i]<<" "<<Tree[child].dis[i]<<" "<<vbW+Tree[rank[IDMap[line[i]]]].dis[bH]<<endl;
+//                    }
 //                    checkedDis.insert(make_pair(child,i));
                     if(Tree[child].dis[i]>vbW+Tree[rank[IDMap[line[i]]]].dis[bH]){
                         Tree[child].dis[i]=vbW+Tree[rank[IDMap[line[i]]]].dis[bH];
                         Tree[child].FN[i]=false;
+                        Tree[child].cnt[i]=1;//new
                         ProIDdisCha=true;
-//                        if(i<bHeight){
-//                            vUpdated[childID] = true;
-//                        }
+                        flagUpdate[i]=true;
+                        cntNew[i]=1;
+                    }
+                    else if(Tree[child].dis[i]==vbW+Tree[rank[IDMap[line[i]]]].dis[bH]){
+                        cntNew[i]++;
+                        if(flagUpdate[i]) {
+                            Tree[child].cnt[i]+=1;//new
+                        }
+                        else if(cntNew[i]>Tree[child].cnt[i]){
+                            Tree[child].cnt[i]=cntNew[i];
+                        }
                     }
                 }
             }
@@ -3901,9 +4416,8 @@ void Graph::DecreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
 
     //    vector<int> ProBeginVertexSet; //ProBeginVertexSet.clear();
@@ -3922,14 +4436,18 @@ void Graph::DecreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
 
         if(Neighbor[a].find(b)!=Neighbor[a].end()){
             Neighbor[a][b]=newW;
-        }else{
-            cout<<"Wrong for Neighbors!"<<endl; exit(1);
         }
+//        else{
+//            cout<<"Wrong for Neighbors! "<<a<<" "<<b<<endl;
+//            exit(1);
+//        }
         if(Neighbor[b].find(a)!=Neighbor[b].end()){
             Neighbor[b][a]=newW;
-        }else{
-            cout<<"Wrong for Neighbors!"<<endl; exit(1);
         }
+//        else{
+//            cout<<"Wrong for Neighbors! "<<b<<" "<<a<<endl;
+//            exit(1);
+//        }
 
         for(int i=0;i<Tree[rank[lid]].vert.size();i++){
             if(Tree[rank[lid]].vert[i].first==hid){
@@ -3956,7 +4474,7 @@ void Graph::DecreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
         vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProID]].vert;
         bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw;
+            int Cid=it->x; int Cw;
             int cidH=Tree[rank[Cid]].height-1;
 
             map<int,int> Hnei; //Hnei.clear();
@@ -3978,8 +4496,10 @@ void Graph::DecreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
                     ProIDdisCha=true;
                     vUpdated[ProID]=true;
                     Tree[rank[ProID]].DisRe.insert(Cid);
+                    Tree[rank[ProID]].cnt[cidH]=1;//new
                 }else if(Tree[rank[ProID]].dis[cidH]==Cw){
                     Tree[rank[ProID]].FN[cidH]=true;
+                    Tree[rank[ProID]].cnt[cidH]+=1;//new
                 }
 
             }
@@ -4011,7 +4531,349 @@ void Graph::DecreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
                             SCre[lid].insert(Cid);
                             OC.insert(OrderCompMin(lid));
                         }else if(Tree[rank[lid]].vert[k].second.first==wsum){
-                            Tree[rank[lid]].vert[k].second.second+=1;
+                            if(SCre[ProID].find(lid)==SCre[ProID].end()) {//if not found, to avoid repeat count
+                                Tree[rank[lid]].vert[k].second.second += 1;
+                            }
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        if(ProIDdisCha){//if the distance labeling is dectected changed
+            vertexIDChLOverlay.insert(ProID);
+            ProBeginVertexSetNew.clear(); ProBeginVertexSetNew.reserve(ProBeginVertexSetOverlay.size()+1);
+            ProBeginVertexSetNew.push_back(ProID);
+            int rnew=rank[ProID],r;
+            for(int i=0;i<ProBeginVertexSetOverlay.size();i++){
+                r=rank[ProBeginVertexSetOverlay[i]];
+                if(LCAQueryOverlay(rnew,r)!=rnew){
+                    ProBeginVertexSetNew.push_back(ProBeginVertexSetOverlay[i]);
+                }
+            }
+            ProBeginVertexSetOverlay=ProBeginVertexSetNew;
+        }
+    }
+
+    //cout<<"Finish bottom-up refresh"<<endl;
+
+    if(ifLabelU){
+        int ProBeginVertexID;
+        for(int i=0;i<ProBeginVertexSetOverlay.size();i++){
+            ProBeginVertexID=ProBeginVertexSetOverlay[i];
+            vector<int> linee; //linee.clear();
+            linee.reserve(heightMax);
+            int pachidd=Tree[Tree[rank[ProBeginVertexID]].pa].uniqueVertex;
+            while(Tree[rank[pachidd]].height>1){
+                linee.insert(linee.begin(),pachidd);
+                pachidd=Tree[Tree[rank[pachidd]].pa].uniqueVertex;
+            }
+            linee.insert(linee.begin(),pachidd);
+            EachNodeProBDis5(rank[ProBeginVertexID], linee, vertexIDChLOverlay,Tree,rank);
+        }
+    }
+
+    //return checkedDis.size();
+}
+
+void Graph::EdgeInsertOverlayBatchCH(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<int,int>> &Neighbor, vector<Node> &Tree, vector<int> &rank, int heightMax){
+    map<int,int> checkedDis;
+
+    for(int i=0;i<Tree.size();i++){
+        Tree[i].DisRe.clear();//record the star weight change (causing the distance change)
+    }
+
+    //NodeOrderss.clear();
+//    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
+    set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
+
+    //    vector<int> ProBeginVertexSet; //ProBeginVertexSet.clear();
+    vector<int> ProBeginVertexSetNew;
+//    set<int> vertexIDChL; //vertexIDChL.clear();//record the vertex whose distanc labeling has changed
+    ProBeginVertexSetOverlay.clear(); vertexIDChLOverlay.clear();
+
+    int a,b,newW,lid,hid;
+    for(int k=0;k<wBatch.size();k++){
+        a=wBatch[k].first.first; b=wBatch[k].first.second ;newW=wBatch[k].second.second;
+        if(NodeOrder[a]<NodeOrder[b]){
+            lid=a;hid=b;
+        }else{
+            lid=b;hid=a;
+        }
+
+        if(Neighbor[a].find(b)!=Neighbor[a].end()){
+            cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][b]<<endl;
+            exit(1);
+        }
+        if(Neighbor[b].find(a)!=Neighbor[b].end()){
+            cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][a]<<endl;
+            exit(1);
+        }
+
+        Neighbor[a].insert({b,newW});
+        Neighbor[b].insert({a,newW});
+        bool ifFind=false;
+        for(int i=0;i<Tree[rank[lid]].vert.size();i++){
+            if(Tree[rank[lid]].vert[i].first==hid){
+                ifFind=true;
+                if(Tree[rank[lid]].vert[i].second.first>newW){
+                    Tree[rank[lid]].vert[i].second.first=newW;
+                    Tree[rank[lid]].vert[i].second.second=1;
+                    SCre[lid].insert(hid);
+                    OC.insert(OrderCompMin(lid));
+                }else if(Tree[rank[lid]].vert[i].second.first==newW){
+                    Tree[rank[lid]].vert[i].second.second+=1;
+                }
+                break;
+            }
+        }
+
+        if(!ifFind){
+            int newSCNum=0;
+            cout<<"Not found edge "<<lid<<" "<<hid<<" "<<newW<<endl;
+            Tree[rank[lid]].vert.emplace_back(hid, make_pair(newW,1));
+            newSCNum++;
+            SCre[lid].insert(hid);
+            OC.insert(OrderCompMin(lid));
+
+            BottomUpNewShortcutInsertCH(lid,hid,newW,Tree,rank,newSCNum);
+        }
+    }
+
+
+    int ProID;
+    //processing the stars
+    while(!OC.empty()){
+        ProID=(*OC.begin()).x;
+        OC.erase(OC.begin());
+        vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProID]].vert;
+        bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
+        for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
+            int Cid=it->x; int Cw;
+            int cidH=Tree[rank[Cid]].height-1;
+
+            map<int,int> Hnei; //Hnei.clear();
+            vector<pair<int,int>> Lnei; //Lnei.clear();
+            for(int j=0;j<Vert.size();j++){
+                if(NodeOrder[Vert[j].first]>NodeOrder[Cid]){
+                    Hnei[Vert[j].first]=Vert[j].second.first;
+                }else if(NodeOrder[Vert[j].first]<NodeOrder[Cid]){
+                    Lnei.push_back(make_pair(Vert[j].first,Vert[j].second.first));
+                }else{
+                    Cw=Vert[j].second.first;
+                }
+            }
+
+
+            int hid,hidHeight,lid,lidHeight,wsum;
+            for(int j=0;j<Tree[rank[Cid]].vert.size();j++){
+                hid=Tree[rank[Cid]].vert[j].first;hidHeight=Tree[rank[hid]].height-1;
+                if(Hnei.find(hid)!=Hnei.end()){
+                    wsum=Cw+Hnei[hid];
+                    if(wsum<Tree[rank[Cid]].vert[j].second.first){
+                        Tree[rank[Cid]].vert[j].second.first=wsum;
+                        Tree[rank[Cid]].vert[j].second.second=1;
+                        SCre[Cid].insert(hid);
+                        OC.insert(OrderCompMin(Cid));
+                    }else if(wsum==Tree[rank[Cid]].vert[j].second.first){
+                        Tree[rank[Cid]].vert[j].second.second+=1;
+                    }
+
+                }
+            }
+            for(int j=0;j<Lnei.size();j++){
+                lid=Lnei[j].first;lidHeight=Tree[rank[lid]].height-1;
+                for(int k=0;k<Tree[rank[lid]].vert.size();k++){
+                    if(Tree[rank[lid]].vert[k].first==Cid){
+                        wsum=Cw+Lnei[j].second;
+                        if(Tree[rank[lid]].vert[k].second.first>wsum){
+                            Tree[rank[lid]].vert[k].second.first=wsum;
+                            Tree[rank[lid]].vert[k].second.second=1;
+                            SCre[lid].insert(Cid);
+                            OC.insert(OrderCompMin(lid));
+                        }else if(Tree[rank[lid]].vert[k].second.first==wsum){
+                            if(SCre[ProID].find(lid)==SCre[ProID].end()) {//if not found, to avoid repeat count
+                                Tree[rank[lid]].vert[k].second.second += 1;
+                            }
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        if(ProIDdisCha){//if the distance labeling is dectected changed
+            vertexIDChLOverlay.insert(ProID);
+            ProBeginVertexSetNew.clear(); ProBeginVertexSetNew.reserve(ProBeginVertexSetOverlay.size()+1);
+            ProBeginVertexSetNew.push_back(ProID);
+            int rnew=rank[ProID],r;
+            for(int i=0;i<ProBeginVertexSetOverlay.size();i++){
+                r=rank[ProBeginVertexSetOverlay[i]];
+                if(LCAQueryOverlay(rnew,r)!=rnew){
+                    ProBeginVertexSetNew.push_back(ProBeginVertexSetOverlay[i]);
+                }
+            }
+            ProBeginVertexSetOverlay=ProBeginVertexSetNew;
+        }
+    }
+
+    //cout<<"Finish bottom-up refresh"<<endl;
+
+
+
+    //return checkedDis.size();
+}
+
+void Graph::EdgeInsertOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<int,int>> &Neighbor, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU){
+    map<int,int> checkedDis;
+
+    for(int i=0;i<Tree.size();i++){
+        Tree[i].DisRe.clear();//record the star weight change (causing the distance change)
+    }
+
+    //NodeOrderss.clear();
+//    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
+    set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
+
+    //    vector<int> ProBeginVertexSet; //ProBeginVertexSet.clear();
+    vector<int> ProBeginVertexSetNew;
+//    set<int> vertexIDChL; //vertexIDChL.clear();//record the vertex whose distanc labeling has changed
+    ProBeginVertexSetOverlay.clear(); vertexIDChLOverlay.clear();
+
+    int a,b,newW,lid,hid;
+    for(int k=0;k<wBatch.size();k++){
+        a=wBatch[k].first.first; b=wBatch[k].first.second ;newW=wBatch[k].second.second;
+        if(NodeOrder[a]<NodeOrder[b]){
+            lid=a;hid=b;
+        }else{
+            lid=b;hid=a;
+        }
+
+        if(Neighbor[a].find(b)!=Neighbor[a].end()){
+            cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[a][b]<<endl;
+            exit(1);
+        }
+        if(Neighbor[b].find(a)!=Neighbor[b].end()){
+            cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbor[b][a]<<endl;
+            exit(1);
+        }
+
+        Neighbor[a].insert({b,newW});
+        Neighbor[b].insert({a,newW});
+        bool ifFind=false;
+        for(int i=0;i<Tree[rank[lid]].vert.size();i++){
+            if(Tree[rank[lid]].vert[i].first==hid){
+                ifFind=true;
+                if(Tree[rank[lid]].vert[i].second.first>newW){
+                    Tree[rank[lid]].vert[i].second.first=newW;
+                    Tree[rank[lid]].vert[i].second.second=1;
+                    SCre[lid].insert(hid);
+                    OC.insert(OrderCompMin(lid));
+                }else if(Tree[rank[lid]].vert[i].second.first==newW){
+                    Tree[rank[lid]].vert[i].second.second+=1;
+                }
+                break;
+            }
+        }
+
+        if(!ifFind){
+            int newSCNum=0;
+            cout<<"Not found edge "<<lid<<" "<<hid<<" "<<newW<<endl;
+            ifFind=false;
+            Tree[rank[lid]].vert.emplace_back(hid, make_pair(newW,1));
+            newSCNum++;
+            for(int i=0;i<Tree[rank[lid]].vAncestor.size();++i){
+                if(Tree[rank[lid]].vAncestor[i]==hid){
+                    Tree[rank[lid]].pos.push_back(i);
+                    ifFind=true;
+                }
+            }
+            SCre[lid].insert(hid);
+            OC.insert(OrderCompMin(lid));
+            if(!ifFind){//if false
+                cout<<"Cross-branch edge! Should reorganize the tree structure! "<<lid<<" "<<hid<<" "<<newW<<endl;
+                exit(1);
+            }
+            BottomUpNewShortcutInsert(lid,hid,newW,Tree,rank,newSCNum);
+        }
+    }
+
+
+    int ProID;
+    //processing the stars
+    while(!OC.empty()){
+        ProID=(*OC.begin()).x;
+        OC.erase(OC.begin());
+        vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProID]].vert;
+        bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
+        for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
+            int Cid=it->x; int Cw;
+            int cidH=Tree[rank[Cid]].height-1;
+
+            map<int,int> Hnei; //Hnei.clear();
+            vector<pair<int,int>> Lnei; //Lnei.clear();
+            for(int j=0;j<Vert.size();j++){
+                if(NodeOrder[Vert[j].first]>NodeOrder[Cid]){
+                    Hnei[Vert[j].first]=Vert[j].second.first;
+                }else if(NodeOrder[Vert[j].first]<NodeOrder[Cid]){
+                    Lnei.push_back(make_pair(Vert[j].first,Vert[j].second.first));
+                }else{
+                    Cw=Vert[j].second.first;
+                }
+            }
+
+            if(algoChoice==H2H){
+                if(Tree[rank[ProID]].dis[cidH]>Cw){
+                    Tree[rank[ProID]].dis[cidH]=Cw;
+                    Tree[rank[ProID]].FN[cidH]=true;
+                    ProIDdisCha=true;
+                    vUpdated[ProID]=true;
+                    Tree[rank[ProID]].DisRe.insert(Cid);
+                    Tree[rank[ProID]].cnt[cidH]=1;//new
+                }else if(Tree[rank[ProID]].dis[cidH]==Cw){
+                    Tree[rank[ProID]].FN[cidH]=true;
+                    Tree[rank[ProID]].cnt[cidH]+=1;//new
+                }
+
+            }
+
+            int hid,hidHeight,lid,lidHeight,wsum;
+            for(int j=0;j<Tree[rank[Cid]].vert.size();j++){
+                hid=Tree[rank[Cid]].vert[j].first;hidHeight=Tree[rank[hid]].height-1;
+                if(Hnei.find(hid)!=Hnei.end()){
+                    wsum=Cw+Hnei[hid];
+                    if(wsum<Tree[rank[Cid]].vert[j].second.first){
+                        Tree[rank[Cid]].vert[j].second.first=wsum;
+                        Tree[rank[Cid]].vert[j].second.second=1;
+                        SCre[Cid].insert(hid);
+                        OC.insert(OrderCompMin(Cid));
+                    }else if(wsum==Tree[rank[Cid]].vert[j].second.first){
+                        Tree[rank[Cid]].vert[j].second.second+=1;
+                    }
+
+                }
+            }
+            for(int j=0;j<Lnei.size();j++){
+                lid=Lnei[j].first;lidHeight=Tree[rank[lid]].height-1;
+                for(int k=0;k<Tree[rank[lid]].vert.size();k++){
+                    if(Tree[rank[lid]].vert[k].first==Cid){
+                        wsum=Cw+Lnei[j].second;
+                        if(Tree[rank[lid]].vert[k].second.first>wsum){
+                            Tree[rank[lid]].vert[k].second.first=wsum;
+                            Tree[rank[lid]].vert[k].second.second=1;
+                            SCre[lid].insert(Cid);
+                            OC.insert(OrderCompMin(lid));
+                        }else if(Tree[rank[lid]].vert[k].second.first==wsum){
+                            if(SCre[ProID].find(lid)==SCre[ProID].end()) {//if not found, to avoid repeat count
+                                Tree[rank[lid]].vert[k].second.second += 1;
+                            }
                         }
 
                         break;
@@ -4073,6 +4935,1109 @@ void Graph::DecreaseOverlayBatchLabel(vector<Node> &Tree, vector<int> &rank, int
     }
 }
 
+void Graph::BottomUpNewShortcutInsertParti(int lid, int hid, int weight, vector<Node> &Tree, vector<int> &rank, int &newSCNum){
+    int lidM = IDMap[lid], hidM = IDMap[hid];
+    int id1,id2,w1,newW;
+    int fatherWeight=INF;
+    bool ifFind=false;
+    int fatherID=Tree[Tree[rank[lidM]].pa].uniqueVertex;
+    for(int i=0;i<Tree[rank[lidM]].vert.size();++i){
+        id1=Tree[rank[lidM]].vert[i].first; w1=Tree[rank[lidM]].vert[i].second.first;
+
+        if(NodeOrder[id1]<NodeOrder[hid]){
+            int id1M=IDMap[id1];
+            ifFind=false;
+            newW = weight+w1;
+            newW = INF;
+            for(int j=0;j<Tree[rank[id1M]].vert.size();++j){
+                id2=Tree[rank[id1M]].vert[j].first;
+                if(id2==hid){
+//                    if(Tree[rank[id1M]].vert[j].second.first>newW){
+//                        Tree[rank[id1M]].vert[j].second.first=newW;
+//                        Tree[rank[id1M]].vert[j].second.second=1;
+//                        cout<<"Update SC 1. "<<id1<<"("<<NodeOrder[id1]<<") "<<hid<<" "<<newW<<endl;
+//                        if(id1==fatherID){
+//                            fatherWeight=newW;
+//                        }
+//                    }else if(Tree[rank[id1M]].vert[j].second.first==newW){
+//                        Tree[rank[id1M]].vert[j].second.second+=1;
+//                        if(id1==fatherID){
+//                            fatherWeight=newW;
+//                        }
+//                    }
+                    ifFind=true;
+                    break;
+                }
+            }
+            if(!ifFind){//if not found
+                Tree[rank[id1M]].vert.emplace_back(hid, make_pair(newW,1));
+                ifFind=false;
+                newSCNum++;
+//                cout<<"New SC 1. "<<id1<<"("<<NodeOrder[id1]<<") "<<hid<<" "<<newW<<endl;
+                for(int k=0;k<Tree[rank[id1M]].vAncestor.size();++k) {
+                    if (Tree[rank[id1M]].vAncestor[k] == hid) {
+//                        Tree[rank[id1M]].pos.push_back(k);
+                        int temp=Tree[rank[id1M]].pos.back();
+                        Tree[rank[id1M]].pos[Tree[rank[id1M]].pos.size()-1]=k;
+                        Tree[rank[id1M]].pos.push_back(temp);
+                        ifFind = true;
+                        break;
+                    }
+                }
+                if(!ifFind){
+                    cout<<"Wrong. Not find hid. "<<id1<<" "<<hid<<endl; exit(1);
+                }
+            }
+        }
+        else if(NodeOrder[id1]>NodeOrder[hid]){
+            ifFind=false;
+            newW = weight+w1;
+            newW = INF;
+            for(int j=0;j<Tree[rank[hidM]].vert.size();++j){
+                id2=Tree[rank[hidM]].vert[j].first;
+                if(id2==id1){
+//                    if(Tree[rank[hidM]].vert[j].second.first>newW){
+//                        cout<<"Update SC 2. "<<hid<<"("<<NodeOrder[hid]<<") "<<id1<<"("<<NodeOrder[id1]<<") "<<newW<<endl;
+//                        Tree[rank[hidM]].vert[j].second.first=newW;
+//                        Tree[rank[hidM]].vert[j].second.second=1;
+//                    }else if(Tree[rank[hidM]].vert[j].second.first==newW){
+//                        Tree[rank[hidM]].vert[j].second.second+=1;
+//                    }
+                    ifFind=true;
+                    break;
+                }
+            }
+            if(!ifFind){//if not found
+                Tree[rank[hidM]].vert.emplace_back(id1, make_pair(newW,1));
+                ifFind=false;
+                newSCNum++;
+//                cout<<"New SC 2. "<<hid<<"("<<NodeOrder[hid]<<") "<<id1<<"("<<NodeOrder[id1]<<") "<<newW<<endl;
+                for(int k=0;k<Tree[rank[hidM]].vAncestor.size();++k) {
+                    if (Tree[rank[hidM]].vAncestor[k] == id1) {
+//                        Tree[rank[hidM]].pos.push_back(k);
+                        int temp=Tree[rank[hidM]].pos.back();
+                        Tree[rank[hidM]].pos[Tree[rank[hidM]].pos.size()-1]=k;
+                        Tree[rank[hidM]].pos.push_back(temp);
+                        ifFind = true;
+                        break;
+                    }
+                }
+                if(!ifFind){
+                    cout<<"Wrong. Not find id1. "<<id1<<" "<<hid<<endl; exit(1);
+                }
+            }
+        }
+
+
+    }
+
+    if(Tree[rank[lidM]].height>Tree[rank[hidM]].height){
+//        cout<<lid<<"("<<Tree[rank[lidM]].height<<") "<<hid<<"("<<Tree[rank[hidM]].height<<") "<<fatherWeight<<endl;
+        BottomUpNewShortcutInsertParti(fatherID,hid,fatherWeight,Tree,rank,newSCNum);
+    }
+}
+
+void Graph::BottomUpNewShortcutInsertPartiCH(int lid, int hid, int weight, vector<Node> &Tree, vector<int> &rank, int &newSCNum){
+    int lidM = IDMap[lid], hidM = IDMap[hid];
+    int id1,id2,w1,newW;
+    int fatherWeight=INF;
+    bool ifFind=false;
+    int fatherID=Tree[Tree[rank[lidM]].pa].uniqueVertex;
+    for(int i=0;i<Tree[rank[lidM]].vert.size();++i){
+        id1=Tree[rank[lidM]].vert[i].first; w1=Tree[rank[lidM]].vert[i].second.first;
+
+        if(NodeOrder[id1]<NodeOrder[hid]){
+            int id1M=IDMap[id1];
+            ifFind=false;
+            newW = weight+w1;
+            newW = INF;
+            for(int j=0;j<Tree[rank[id1M]].vert.size();++j){
+                id2=Tree[rank[id1M]].vert[j].first;
+                if(id2==hid){
+                    ifFind=true;
+                    break;
+                }
+            }
+            if(!ifFind){//if not found
+                Tree[rank[id1M]].vert.emplace_back(hid, make_pair(newW,1));
+                ifFind=false;
+                newSCNum++;
+            }
+        }
+        else if(NodeOrder[id1]>NodeOrder[hid]){
+            ifFind=false;
+            newW = weight+w1;
+            newW = INF;
+            for(int j=0;j<Tree[rank[hidM]].vert.size();++j){
+                id2=Tree[rank[hidM]].vert[j].first;
+                if(id2==id1){
+                    ifFind=true;
+                    break;
+                }
+            }
+            if(!ifFind){//if not found
+                Tree[rank[hidM]].vert.emplace_back(id1, make_pair(newW,1));
+                ifFind=false;
+                newSCNum++;
+
+            }
+        }
+
+
+    }
+
+    if(Tree[rank[lidM]].height>Tree[rank[hidM]].height){
+//        cout<<lid<<"("<<Tree[rank[lidM]].height<<") "<<hid<<"("<<Tree[rank[hidM]].height<<") "<<fatherWeight<<endl;
+        BottomUpNewShortcutInsertPartiCH(fatherID,hid,fatherWeight,Tree,rank,newSCNum);
+    }
+}
+
+void Graph::BottomUpNewShortcutInsert(int lid, int hid, int weight, vector<Node> &Tree, vector<int> &rank, int &newSCNum){
+    int id1,id2,w1,newW;
+    int fatherWeight=INF;
+    bool ifFind=false;
+    int fatherID=Tree[Tree[rank[lid]].pa].uniqueVertex;
+    for(int i=0;i<Tree[rank[lid]].vert.size();++i){
+        id1=Tree[rank[lid]].vert[i].first; w1=Tree[rank[lid]].vert[i].second.first;
+
+        if(NodeOrder[id1]<NodeOrder[hid]){
+            ifFind=false;
+            for(int j=0;j<Tree[rank[id1]].vert.size();++j){
+                id2=Tree[rank[id1]].vert[j].first;
+                if(id2==hid){
+                    ifFind=true;
+                    break;
+                }
+            }
+            if(!ifFind){//if not found
+                newW = weight+w1;
+                newW = INF;
+                Tree[rank[id1]].vert.emplace_back(hid, make_pair(newW,1));
+                newSCNum++;
+                ifFind=false;
+                for(int k=0;k<Tree[rank[id1]].vAncestor.size();++k) {
+                    if (Tree[rank[id1]].vAncestor[k] == hid) {
+//                        Tree[rank[id1]].pos.push_back(k);
+                        int temp=Tree[rank[id1]].pos.back();
+                        Tree[rank[id1]].pos[Tree[rank[id1]].pos.size()-1]=k;
+                        Tree[rank[id1]].pos.push_back(temp);
+                        ifFind = true;
+                        break;
+                    }
+                }
+                if(!ifFind){
+                    cout<<"Wrong. Not find hid. "<<id1<<" "<<hid<<endl; exit(1);
+                }
+//                if(id1==fatherID){
+//                    fatherWeight=newW;
+//                }
+            }
+        }
+        else if(NodeOrder[id1]>NodeOrder[hid]){
+            ifFind=false;
+            for(int j=0;j<Tree[rank[hid]].vert.size();++j){
+                id2=Tree[rank[hid]].vert[j].first;
+                if(id2==id1){
+                    ifFind=true; break;
+                }
+            }
+            if(!ifFind){//if not found
+                newW = weight+w1;
+                newW = INF;
+                Tree[rank[hid]].vert.emplace_back(id1, make_pair(newW,1));
+                newSCNum++;
+                ifFind=false;
+                for(int k=0;k<Tree[rank[hid]].vAncestor.size();++k) {
+                    if (Tree[rank[hid]].vAncestor[k] == id1) {
+//                        Tree[rank[hid]].pos.push_back(k);
+                        int temp=Tree[rank[hid]].pos.back();
+                        Tree[rank[hid]].pos[Tree[rank[hid]].pos.size()-1]=k;
+                        Tree[rank[hid]].pos.push_back(temp);
+                        ifFind = true;
+                        break;
+                    }
+                }
+                if(!ifFind){
+                    cout<<"Wrong. Not find id1. "<<id1<<" "<<hid<<endl; exit(1);
+                }
+            }
+        }
+
+
+    }
+
+    if(Tree[rank[lid]].height>Tree[rank[hid]].height){
+//        cout<<lid<<"("<<Tree[rank[lid]].height<<") "<<hid<<"("<<Tree[rank[hid]].height<<") "<<fatherWeight<<endl;
+        BottomUpNewShortcutInsert(fatherID,hid,fatherWeight,Tree,rank,newSCNum);
+    }
+}
+
+void Graph::BottomUpNewShortcutInsertCH(int lid, int hid, int weight, vector<Node> &Tree, vector<int> &rank, int &newSCNum){
+    int id1,id2,w1,newW;
+    int fatherWeight=INF;
+    bool ifFind=false;
+    int fatherID=Tree[Tree[rank[lid]].pa].uniqueVertex;
+    for(int i=0;i<Tree[rank[lid]].vert.size();++i){
+        id1=Tree[rank[lid]].vert[i].first; w1=Tree[rank[lid]].vert[i].second.first;
+
+        if(NodeOrder[id1]<NodeOrder[hid]){
+            ifFind=false;
+            for(int j=0;j<Tree[rank[id1]].vert.size();++j){
+                id2=Tree[rank[id1]].vert[j].first;
+                if(id2==hid){
+                    ifFind=true;
+                    break;
+                }
+            }
+            if(!ifFind){//if not found
+                newW = weight+w1;
+                newW = INF;
+                Tree[rank[id1]].vert.emplace_back(hid, make_pair(newW,1));
+                newSCNum++;
+            }
+        }
+        else if(NodeOrder[id1]>NodeOrder[hid]){
+            ifFind=false;
+            for(int j=0;j<Tree[rank[hid]].vert.size();++j){
+                id2=Tree[rank[hid]].vert[j].first;
+                if(id2==id1){
+                    ifFind=true;
+                    break;
+                }
+            }
+            if(!ifFind){//if not found
+                newW = weight+w1;
+                newW = INF;
+                Tree[rank[hid]].vert.emplace_back(id1, make_pair(newW,1));
+                newSCNum++;
+            }
+        }
+
+    }
+
+    if(Tree[rank[lid]].height>Tree[rank[hid]].height){
+//        cout<<lid<<"("<<Tree[rank[lid]].height<<") "<<hid<<"("<<Tree[rank[hid]].height<<") "<<fatherWeight<<endl;
+        BottomUpNewShortcutInsertCH(fatherID,hid,fatherWeight,Tree,rank,newSCNum);
+    }
+}
+
+void Graph::EdgeInsertPartiBatchCH(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, vector<pair<pair<int,int>,int>>& updatedSC){
+    map<int,int> checkedDis;
+
+    for(int i=0;i<Tree.size();i++){
+        Tree[i].DisRe.clear();//record the star weight change (causing the distance change)
+    }
+
+    //NodeOrderss.clear();
+//    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
+    set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
+
+    int a,b,newW,lid,hid,lidM,hidM;
+    for(int k=0;k<wBatch.size();k++){
+        a=wBatch[k].first.first; b=wBatch[k].first.second ;newW=wBatch[k].second.second;
+        if(NodeOrder[a]<NodeOrder[b]){
+            lid=a;hid=b;
+        }else{
+            lid=b;hid=a;
+        }
+        lidM = IDMap[lid]; hidM = IDMap[hid];
+
+//        if(pid==23){
+//            cout<<pid<<": "<<a<<" "<<b<<" "<<newW<<endl;
+//        }
+        bool ifFind=false;
+        for(int i=0;i<Neighbors[a].size();i++){
+            if(Neighbors[a][i].first==b){
+//                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbors[a][i].second<<endl;
+                if(Neighbors[a][i].second>newW){
+                    Neighbors[a][i].second=newW;
+                }else{
+//                    cout<<"Wrong update. "<<a<<" "<<b<<" "<<Neighbors[a][i].second<<" "<<newW<<endl; exit(1);
+                }
+
+                ifFind=true; break;
+//                exit(1);
+            }
+        }
+
+        for(int i=0;i<Neighbors[b].size();i++){
+            if(Neighbors[b][i].first==a){
+//                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbors[b][i].second<<endl;
+                if(Neighbors[b][i].second>newW){
+                    Neighbors[b][i].second=newW;
+                }else{
+//                    cout<<"Wrong update. "<<a<<" "<<b<<" "<<Neighbors[b][i].second<<" "<<newW<<endl; exit(1);
+                }
+
+                ifFind=true; break;
+//                exit(1);
+            }
+        }
+
+        if(!ifFind) {
+            Neighbors[a].emplace_back(b, newW);
+            Neighbors[b].emplace_back(a, newW);
+        }
+        ifFind=false;
+        for(int i=0;i<Tree[rank[lidM]].vert.size();i++){
+//            cout<<"vert "<<lid<<" "<<Tree[rank[lidM]].vert[i].first<<endl;
+            if(Tree[rank[lidM]].vert[i].first==hid){
+                ifFind=true;
+                if(Tree[rank[lidM]].vert[i].second.first>newW){
+                    Tree[rank[lidM]].vert[i].second.first=newW;
+                    Tree[rank[lidM]].vert[i].second.second=1;
+                    SCre[lid].insert(hid);
+                    OC.insert(OrderCompMin(lid));
+                }else if(Tree[rank[lidM]].vert[i].second.first==newW){
+                    Tree[rank[lidM]].vert[i].second.second+=1;
+                }
+                break;
+            }
+        }
+        int newSCNum=0;
+        if(!ifFind){
+            //            cout<<"Not found edge "<<lid<<" "<<hid<<" "<<newW<<endl;
+            ifFind=false;
+            Tree[rank[lidM]].vert.emplace_back(hid, make_pair(newW,1));
+            newSCNum++;
+//            cout<<"New SC 1. "<<lid<<" "<<hid<<" "<<newW<<endl;
+
+            SCre[lid].insert(hid);
+            OC.insert(OrderCompMin(lid));
+            BottomUpNewShortcutInsertPartiCH(lid,hid,newW,Tree,rank,newSCNum);
+//            cout<<"newSCNum: "<<newSCNum<<endl;
+        }
+
+    }
+
+//    vector<int> ProBeginVertexSet; //ProBeginVertexSet.clear();
+//    set<int> vertexIDChL; //vertexIDChL.clear();//record the vertex whose distanc labeling has changed
+    ProBeginVertexSetParti[pid].clear(); vertexIDChLParti[pid].clear();
+    vector<int> ProBeginVertexSetNew;
+    int ProBeginVertexID;
+    int ProID, ProIDM;
+    //processing the stars
+    while(!OC.empty()){
+        ProID=(*OC.begin()).x;
+        ProIDM=IDMap[ProID];
+        OC.erase(OC.begin());
+        vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProIDM]].vert;
+        bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
+        for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
+            int Cid=it->x; int Cw; int CidM=IDMap[Cid];
+            int cidH=Tree[rank[CidM]].height-1;
+
+            map<int,int> Hnei; //Hnei.clear();
+            vector<pair<int,int>> Lnei; //Lnei.clear();
+            for(int j=0;j<Vert.size();j++){
+                if(NodeOrder[Vert[j].first]>NodeOrder[Cid]){
+                    Hnei[Vert[j].first]=Vert[j].second.first;
+                }else if(NodeOrder[Vert[j].first]<NodeOrder[Cid]){
+                    Lnei.push_back(make_pair(Vert[j].first,Vert[j].second.first));
+                }else{
+                    Cw=Vert[j].second.first;
+                }
+            }
+
+            if(PartiTag[ProID].second){//if boundary vertex
+                updatedSC.emplace_back(make_pair(ProID,Cid),Cw);
+            }
+
+
+
+            int hid2,hidHeight2,lid2,lidHeight2,wsum,lid2M;
+            for(int j=0;j<Tree[rank[CidM]].vert.size();j++){
+                hid2=Tree[rank[CidM]].vert[j].first;hidHeight2=Tree[rank[IDMap[hid2]]].height-1;
+                if(Hnei.find(hid2)!=Hnei.end()){
+                    wsum=Cw+Hnei[hid2];
+                    if(wsum<Tree[rank[CidM]].vert[j].second.first){
+                        Tree[rank[CidM]].vert[j].second.first=wsum;
+                        Tree[rank[CidM]].vert[j].second.second=1;
+                        SCre[Cid].insert(hid2);
+                        OC.insert(OrderCompMin(Cid));
+                    }else if(wsum==Tree[rank[CidM]].vert[j].second.first){
+                        Tree[rank[CidM]].vert[j].second.second+=1;
+                    }
+
+                }
+            }
+            for(int j=0;j<Lnei.size();j++){
+                lid2=Lnei[j].first; lid2M=IDMap[lid2];
+                lidHeight2=Tree[rank[lid2M]].height-1;
+                for(int k=0;k<Tree[rank[lid2M]].vert.size();k++){
+                    if(Tree[rank[lid2M]].vert[k].first==Cid){
+                        wsum=Cw+Lnei[j].second;
+                        if(Tree[rank[lid2M]].vert[k].second.first>wsum){
+                            Tree[rank[lid2M]].vert[k].second.first=wsum;
+                            Tree[rank[lid2M]].vert[k].second.second=1;
+                            SCre[lid2].insert(Cid);
+                            OC.insert(OrderCompMin(lid2));
+                        }else if(Tree[rank[lid2M]].vert[k].second.first==wsum){
+                            if(SCre[ProID].find(OrderCompp(lid2))==SCre[ProID].end()) {//if not found, avoid repeated count
+                                Tree[rank[lid2M]].vert[k].second.second += 1;
+                            }
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+//        if(ProIDdisCha){//if the distance labeling is dectected changed
+//            vertexIDChLParti[pid].insert(ProID);
+//            ProBeginVertexSetNew.clear(); ProBeginVertexSetNew.reserve(ProBeginVertexSetParti[pid].size()+1);
+//            ProBeginVertexSetNew.push_back(ProID);
+//            int rnew=rank[IDMap[ProID]],r;
+//            for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
+//                r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
+//                if(LCAQueryPartition(rnew,r,pid)!=rnew){
+//                    ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
+//                }
+//            }
+//            ProBeginVertexSetParti[pid]=ProBeginVertexSetNew;
+//        }
+    }
+
+    //cout<<"Finish bottom-up refresh"<<endl;
+
+}
+
+
+//batch update for partition graph of PH2H, edge insertion
+void Graph::EdgeInsertPartiBatchH2H(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, vector<pair<pair<int,int>,int>>& updatedSC, bool ifLabelU){
+    map<int,int> checkedDis;
+
+    for(int i=0;i<Tree.size();i++){
+        Tree[i].DisRe.clear();//record the star weight change (causing the distance change)
+    }
+
+    //NodeOrderss.clear();
+//    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
+    set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
+
+    int a,b,newW,lid,hid,lidM,hidM;
+    for(int k=0;k<wBatch.size();k++){
+        a=wBatch[k].first.first; b=wBatch[k].first.second ;newW=wBatch[k].second.second;
+        if(NodeOrder[a]<NodeOrder[b]){
+            lid=a;hid=b;
+        }else{
+            lid=b;hid=a;
+        }
+        lidM = IDMap[lid]; hidM = IDMap[hid];
+
+//        if(pid==23){
+//            cout<<pid<<": "<<a<<" "<<b<<" "<<newW<<endl;
+//        }
+
+        for(int i=0;i<Neighbors[a].size();i++){
+            if(Neighbors[a][i].first==b){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbors[a][i].second<<endl;
+                exit(1);
+            }
+        }
+        for(int i=0;i<Neighbors[b].size();i++){
+            if(Neighbors[b][i].first==a){
+                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbors[b][i].second<<endl;
+                exit(1);
+            }
+        }
+
+        Neighbors[a].emplace_back(b,newW);
+        Neighbors[b].emplace_back(a,newW);
+        bool ifFind=false;
+        for(int i=0;i<Tree[rank[lidM]].vert.size();i++){
+//            cout<<"vert "<<lid<<" "<<Tree[rank[lidM]].vert[i].first<<endl;
+            if(Tree[rank[lidM]].vert[i].first==hid){
+                ifFind=true;
+                if(Tree[rank[lidM]].vert[i].second.first>newW){
+                    Tree[rank[lidM]].vert[i].second.first=newW;
+                    Tree[rank[lidM]].vert[i].second.second=1;
+                    SCre[lid].insert(hid);
+                    OC.insert(OrderCompMin(lid));
+                }else if(Tree[rank[lidM]].vert[i].second.first==newW){
+                    Tree[rank[lidM]].vert[i].second.second+=1;
+                }
+                break;
+            }
+        }
+        int newSCNum=0;
+        if(!ifFind){
+//            cout<<"Not found edge "<<lid<<" "<<hid<<" "<<newW<<endl;
+            ifFind=false;
+            Tree[rank[lidM]].vert.emplace_back(hid, make_pair(newW,1));
+            newSCNum++;
+//            cout<<"New SC 1. "<<lid<<" "<<hid<<" "<<newW<<endl;
+            for(int i=0;i<Tree[rank[lidM]].vAncestor.size();++i){
+                if(Tree[rank[lidM]].vAncestor[i]==hid){
+                    int temp=Tree[rank[lidM]].pos.back();
+                    Tree[rank[lidM]].pos[Tree[rank[lidM]].pos.size()-1]=i;
+                    Tree[rank[lidM]].pos.push_back(temp);
+                    ifFind=true;
+                }
+            }
+            SCre[lid].insert(hid);
+            OC.insert(OrderCompMin(lid));
+            if(!ifFind){//if false
+                cout<<"Cross-branch edge! Should reorganize the tree structure! "<<lid<<" "<<hid<<" "<<newW<<endl;
+                exit(1);
+            }
+            BottomUpNewShortcutInsertParti(lid,hid,newW,Tree,rank,newSCNum);
+//            cout<<"newSCNum: "<<newSCNum<<endl;
+        }
+    }
+
+//    vector<int> ProBeginVertexSet; //ProBeginVertexSet.clear();
+//    set<int> vertexIDChL; //vertexIDChL.clear();//record the vertex whose distanc labeling has changed
+    ProBeginVertexSetParti[pid].clear(); vertexIDChLParti[pid].clear();
+    vector<int> ProBeginVertexSetNew;
+    int ProBeginVertexID;
+    int ProID, ProIDM;
+    //processing the stars
+    while(!OC.empty()){
+        ProID=(*OC.begin()).x;
+        ProIDM=IDMap[ProID];
+        OC.erase(OC.begin());
+        vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProIDM]].vert;
+        bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
+        for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
+            int Cid=it->x; int Cw; int CidM=IDMap[Cid];
+            int cidH=Tree[rank[CidM]].height-1;
+
+            map<int,int> Hnei; //Hnei.clear();
+            vector<pair<int,int>> Lnei; //Lnei.clear();
+            for(int j=0;j<Vert.size();j++){
+                if(NodeOrder[Vert[j].first]>NodeOrder[Cid]){
+                    Hnei[Vert[j].first]=Vert[j].second.first;
+                }else if(NodeOrder[Vert[j].first]<NodeOrder[Cid]){
+                    Lnei.push_back(make_pair(Vert[j].first,Vert[j].second.first));
+                }else{
+                    Cw=Vert[j].second.first;
+                }
+            }
+
+            if(PartiTag[ProID].second){//if boundary vertex
+                updatedSC.emplace_back(make_pair(ProID,Cid),Cw);
+            }
+
+            if(algoChoice==H2H){
+                if(Tree[rank[ProIDM]].dis[cidH]>Cw){
+                    Tree[rank[ProIDM]].dis[cidH]=Cw;
+                    Tree[rank[ProIDM]].FN[cidH]=true;
+                    ProIDdisCha=true;
+                    vUpdated[ProID]=true;
+                    Tree[rank[ProIDM]].DisRe.insert(Cid);
+                    Tree[rank[ProIDM]].cnt[cidH]=1;//new
+                }else if(Tree[rank[ProIDM]].dis[cidH]==Cw){
+                    Tree[rank[ProIDM]].FN[cidH]=true;
+                    Tree[rank[ProIDM]].cnt[cidH]+=1;//new
+                }
+            }
+
+
+            int hid2,hidHeight2,lid2,lidHeight2,wsum,lid2M;
+            for(int j=0;j<Tree[rank[CidM]].vert.size();j++){
+                hid2=Tree[rank[CidM]].vert[j].first;hidHeight2=Tree[rank[IDMap[hid2]]].height-1;
+                if(Hnei.find(hid2)!=Hnei.end()){
+                    wsum=Cw+Hnei[hid2];
+                    if(wsum<Tree[rank[CidM]].vert[j].second.first){
+                        Tree[rank[CidM]].vert[j].second.first=wsum;
+                        Tree[rank[CidM]].vert[j].second.second=1;
+                        SCre[Cid].insert(hid2);
+                        OC.insert(OrderCompMin(Cid));
+                    }else if(wsum==Tree[rank[CidM]].vert[j].second.first){
+                        Tree[rank[CidM]].vert[j].second.second+=1;
+                    }
+
+                }
+            }
+            for(int j=0;j<Lnei.size();j++){
+                lid2=Lnei[j].first; lid2M=IDMap[lid2];
+                lidHeight2=Tree[rank[lid2M]].height-1;
+                for(int k=0;k<Tree[rank[lid2M]].vert.size();k++){
+                    if(Tree[rank[lid2M]].vert[k].first==Cid){
+                        wsum=Cw+Lnei[j].second;
+                        if(Tree[rank[lid2M]].vert[k].second.first>wsum){
+                            Tree[rank[lid2M]].vert[k].second.first=wsum;
+                            Tree[rank[lid2M]].vert[k].second.second=1;
+                            SCre[lid2].insert(Cid);
+                            OC.insert(OrderCompMin(lid2));
+                        }else if(Tree[rank[lid2M]].vert[k].second.first==wsum){
+                            if(SCre[ProID].find(OrderCompp(lid2))==SCre[ProID].end()) {//if not found, avoid repeated count
+                                Tree[rank[lid2M]].vert[k].second.second += 1;
+                            }
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        if(ProIDdisCha){//if the distance labeling is dectected changed
+            vertexIDChLParti[pid].insert(ProID);
+            ProBeginVertexSetNew.clear(); ProBeginVertexSetNew.reserve(ProBeginVertexSetParti[pid].size()+1);
+            ProBeginVertexSetNew.push_back(ProID);
+            int rnew=rank[IDMap[ProID]],r;
+            for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
+                r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
+                    ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
+                }
+            }
+            ProBeginVertexSetParti[pid]=ProBeginVertexSetNew;
+        }
+    }
+
+    //cout<<"Finish bottom-up refresh"<<endl;
+    if(ifLabelU){
+        for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
+            ProBeginVertexID=ProBeginVertexSetParti[pid][i];
+            vector<int> linee; //linee.clear();
+            linee.reserve(heightMax);
+            int pachidd=Tree[Tree[rank[IDMap[ProBeginVertexID]]].pa].uniqueVertex;
+            while(Tree[rank[IDMap[pachidd]]].height>1){
+                linee.insert(linee.begin(),pachidd);
+                pachidd=Tree[Tree[rank[IDMap[pachidd]]].pa].uniqueVertex;
+            }
+            linee.insert(linee.begin(),pachidd);
+            EachNodeProBDis5Parti(rank[IDMap[ProBeginVertexID]], linee, vertexIDChLParti[pid],Tree,rank);
+        }
+    }
+
+    //return checkedDis.size();
+}
+
+//batch update for partition graph of PH2H, edge insertion
+void Graph::EdgeInsertPartiBatchH2HPre(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU){
+    map<int,int> checkedDis;
+
+    for(int i=0;i<Tree.size();i++){
+        Tree[i].DisRe.clear();//record the star weight change (causing the distance change)
+    }
+
+    //NodeOrderss.clear();
+//    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
+    set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
+
+    int a,b,newW,lid,hid,lidM,hidM;
+    for(int k=0;k<wBatch.size();k++){
+        a=wBatch[k].first.first; b=wBatch[k].first.second ;newW=wBatch[k].second.second;
+        if(NodeOrder[a]<NodeOrder[b]){
+            lid=a;hid=b;
+        }else{
+            lid=b;hid=a;
+        }
+        lidM = IDMap[lid]; hidM = IDMap[hid];
+        bool ifFind=false;
+        for(int i=0;i<Neighbors[a].size();i++){
+            if(Neighbors[a][i].first==b){
+//                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbors[a][i].second<<endl;
+                if(Neighbors[a][i].second>newW){
+                    Neighbors[a][i].second=newW;
+                }else{
+//                    cout<<"Wrong update. "<<a<<" "<<b<<" "<<Neighbors[a][i].second<<" "<<newW<<endl; exit(1);
+                }
+
+                ifFind=true; break;
+//                exit(1);
+            }
+        }
+
+        for(int i=0;i<Neighbors[b].size();i++){
+            if(Neighbors[b][i].first==a){
+//                cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbors[b][i].second<<endl;
+                if(Neighbors[b][i].second>newW){
+                    Neighbors[b][i].second=newW;
+                }else{
+//                    cout<<"Wrong update. "<<a<<" "<<b<<" "<<Neighbors[b][i].second<<" "<<newW<<endl; exit(1);
+                }
+
+                ifFind=true; break;
+//                exit(1);
+            }
+        }
+
+        if(!ifFind) {
+            Neighbors[a].emplace_back(b, newW);
+            Neighbors[b].emplace_back(a, newW);
+        }
+        ifFind=false;
+        for(int i=0;i<Tree[rank[lidM]].vert.size();i++){
+//            cout<<"vert "<<lid<<" "<<Tree[rank[lidM]].vert[i].first<<endl;
+            if(Tree[rank[lidM]].vert[i].first==hid){
+                ifFind=true;
+                if(Tree[rank[lidM]].vert[i].second.first>newW){
+                    Tree[rank[lidM]].vert[i].second.first=newW;
+                    Tree[rank[lidM]].vert[i].second.second=1;
+                    SCre[lid].insert(hid);
+                    OC.insert(OrderCompMin(lid));
+                }else if(Tree[rank[lidM]].vert[i].second.first==newW){
+                    Tree[rank[lidM]].vert[i].second.second+=1;
+                }
+                break;
+            }
+        }
+        int newSCNum=0;
+        if(!ifFind){
+//            cout<<"Not found edge "<<lid<<" "<<hid<<" "<<newW<<endl;
+            ifFind=false;
+            Tree[rank[lidM]].vert.emplace_back(hid, make_pair(newW,1));
+            newSCNum++;
+//            cout<<"New SC 1. "<<lid<<" "<<hid<<" "<<newW<<endl;
+            for(int i=0;i<Tree[rank[lidM]].vAncestor.size();++i){
+                if(Tree[rank[lidM]].vAncestor[i]==hid){
+                    int temp=Tree[rank[lidM]].pos.back();
+                    Tree[rank[lidM]].pos[Tree[rank[lidM]].pos.size()-1]=i;
+                    Tree[rank[lidM]].pos.push_back(temp);
+                    ifFind=true;
+                }
+            }
+            SCre[lid].insert(hid);
+            OC.insert(OrderCompMin(lid));
+            if(!ifFind){//if false
+                cout<<"Cross-branch edge! Should reorganize the tree structure! "<<lid<<" "<<hid<<" "<<newW<<endl;
+                exit(1);
+            }
+            BottomUpNewShortcutInsertParti(lid,hid,newW,Tree,rank,newSCNum);
+//            cout<<"newSCNum: "<<newSCNum<<endl;
+        }
+    }
+
+//    vector<int> ProBeginVertexSet; //ProBeginVertexSet.clear();
+//    set<int> vertexIDChL; //vertexIDChL.clear();//record the vertex whose distanc labeling has changed
+    ProBeginVertexSetParti[pid].clear(); vertexIDChLParti[pid].clear();
+    vector<int> ProBeginVertexSetNew;
+    int ProBeginVertexID;
+    int ProID, ProIDM;
+    //processing the stars
+    while(!OC.empty()){
+        ProID=(*OC.begin()).x;
+        ProIDM=IDMap[ProID];
+        OC.erase(OC.begin());
+        vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProIDM]].vert;
+        bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
+        for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
+            int Cid=it->x; int Cw; int CidM=IDMap[Cid];
+            int cidH=Tree[rank[CidM]].height-1;
+
+            map<int,int> Hnei; //Hnei.clear();
+            vector<pair<int,int>> Lnei; //Lnei.clear();
+            for(int j=0;j<Vert.size();j++){
+                if(NodeOrder[Vert[j].first]>NodeOrder[Cid]){
+                    Hnei[Vert[j].first]=Vert[j].second.first;
+                }else if(NodeOrder[Vert[j].first]<NodeOrder[Cid]){
+                    Lnei.push_back(make_pair(Vert[j].first,Vert[j].second.first));
+                }else{
+                    Cw=Vert[j].second.first;
+                }
+            }
+
+
+            if(algoChoice==H2H){
+                if(Tree[rank[ProIDM]].dis[cidH]>Cw){
+                    Tree[rank[ProIDM]].dis[cidH]=Cw;
+                    Tree[rank[ProIDM]].FN[cidH]=true;
+                    ProIDdisCha=true;
+                    vUpdated[ProID]=true;
+                    Tree[rank[ProIDM]].DisRe.insert(Cid);
+                    Tree[rank[ProIDM]].cnt[cidH]=1;//new
+                }else if(Tree[rank[ProIDM]].dis[cidH]==Cw){
+                    Tree[rank[ProIDM]].FN[cidH]=true;
+                    Tree[rank[ProIDM]].cnt[cidH]+=1;//new
+                }
+            }
+
+
+            int hid2,hidHeight2,lid2,lidHeight2,wsum,lid2M;
+            for(int j=0;j<Tree[rank[CidM]].vert.size();j++){
+                hid2=Tree[rank[CidM]].vert[j].first;hidHeight2=Tree[rank[IDMap[hid2]]].height-1;
+                if(Hnei.find(hid2)!=Hnei.end()){
+                    wsum=Cw+Hnei[hid2];
+                    if(wsum<Tree[rank[CidM]].vert[j].second.first){
+                        Tree[rank[CidM]].vert[j].second.first=wsum;
+                        Tree[rank[CidM]].vert[j].second.second=1;
+                        SCre[Cid].insert(hid2);
+                        OC.insert(OrderCompMin(Cid));
+                    }else if(wsum==Tree[rank[CidM]].vert[j].second.first){
+                        Tree[rank[CidM]].vert[j].second.second+=1;
+                    }
+
+                }
+            }
+            for(int j=0;j<Lnei.size();j++){
+                lid2=Lnei[j].first; lid2M=IDMap[lid2];
+                lidHeight2=Tree[rank[lid2M]].height-1;
+                for(int k=0;k<Tree[rank[lid2M]].vert.size();k++){
+                    if(Tree[rank[lid2M]].vert[k].first==Cid){
+                        wsum=Cw+Lnei[j].second;
+                        if(Tree[rank[lid2M]].vert[k].second.first>wsum){
+                            Tree[rank[lid2M]].vert[k].second.first=wsum;
+                            Tree[rank[lid2M]].vert[k].second.second=1;
+                            SCre[lid2].insert(Cid);
+                            OC.insert(OrderCompMin(lid2));
+                        }else if(Tree[rank[lid2M]].vert[k].second.first==wsum){
+                            if(SCre[ProID].find(OrderCompp(lid2))==SCre[ProID].end()) {//if not found, avoid repeated count
+                                Tree[rank[lid2M]].vert[k].second.second += 1;
+                            }
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        if(ProIDdisCha){//if the distance labeling is dectected changed
+            vertexIDChLParti[pid].insert(ProID);
+            ProBeginVertexSetNew.clear(); ProBeginVertexSetNew.reserve(ProBeginVertexSetParti[pid].size()+1);
+            ProBeginVertexSetNew.push_back(ProID);
+            int rnew=rank[IDMap[ProID]],r;
+            for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
+                r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
+                    ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
+                }
+            }
+            ProBeginVertexSetParti[pid]=ProBeginVertexSetNew;
+        }
+    }
+
+    //cout<<"Finish bottom-up refresh"<<endl;
+    if(ifLabelU){
+        for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
+            ProBeginVertexID=ProBeginVertexSetParti[pid][i];
+            vector<int> linee; //linee.clear();
+            linee.reserve(heightMax);
+            int pachidd=Tree[Tree[rank[IDMap[ProBeginVertexID]]].pa].uniqueVertex;
+            while(Tree[rank[IDMap[pachidd]]].height>1){
+                linee.insert(linee.begin(),pachidd);
+                pachidd=Tree[Tree[rank[IDMap[pachidd]]].pa].uniqueVertex;
+            }
+            linee.insert(linee.begin(),pachidd);
+            EachNodeProBDis5Parti(rank[IDMap[ProBeginVertexID]], linee, vertexIDChLParti[pid],Tree,rank);
+        }
+    }
+
+    //return checkedDis.size();
+}
+
+//batch update for partition graph of PH2H, edge insertion
+void Graph::EdgeInsertPartiBatchH2HPost(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<unordered_map<vertex,int>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU){
+    map<int,int> checkedDis;
+    for(int i=0;i<Tree.size();i++){
+        Tree[i].DisRe.clear();//record the star weight change (causing the distance change)
+    }
+
+    //NodeOrderss.clear();
+//    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
+    set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
+
+    int a,b,newW,lid,hid,lidM,hidM;
+    for(int k=0;k<wBatch.size();k++){
+        a=wBatch[k].first.first; b=wBatch[k].first.second ;newW=wBatch[k].second.second;
+        if(NodeOrder[a]<NodeOrder[b]){
+            lid=a;hid=b;
+        }else{
+            lid=b;hid=a;
+        }
+        lidM = IDMap[lid]; hidM = IDMap[hid];
+
+//        if(pid==23){
+//            cout<<pid<<": "<<a<<" "<<b<<" "<<newW<<endl;
+//        }
+
+
+        if(Neighbors[a].find(b)!=Neighbors[a].end()){
+            cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbors[a][b]<<endl;
+            exit(1);
+        }
+
+
+        if(Neighbors[b].find(a)!=Neighbors[b].end()){
+            cout<<"Already exist this edge. "<<a<<" "<<b<<" "<<Neighbors[b][a]<<endl;
+            exit(1);
+        }
+
+
+        Neighbors[a].insert({b,newW});
+        Neighbors[b].insert({a,newW});
+        bool ifFind=false;
+        for(int i=0;i<Tree[rank[lidM]].vert.size();i++){
+//            cout<<"vert "<<lid<<" "<<Tree[rank[lidM]].vert[i].first<<endl;
+            if(Tree[rank[lidM]].vert[i].first==hid){
+                ifFind=true;
+                if(Tree[rank[lidM]].vert[i].second.first>newW){
+                    Tree[rank[lidM]].vert[i].second.first=newW;
+                    Tree[rank[lidM]].vert[i].second.second=1;
+                    SCre[lid].insert(hid);
+                    OC.insert(OrderCompMin(lid));
+                }else if(Tree[rank[lidM]].vert[i].second.first==newW){
+                    Tree[rank[lidM]].vert[i].second.second+=1;
+                }
+                break;
+            }
+        }
+        int newSCNum=0;
+        if(!ifFind){
+//            cout<<"Not found edge "<<lid<<" "<<hid<<" "<<newW<<endl;
+            ifFind=false;
+            Tree[rank[lidM]].vert.emplace_back(hid, make_pair(newW,1));
+            newSCNum++;
+            SCre[lid].insert(hid);
+            OC.insert(OrderCompMin(lid));
+//            cout<<"New SC 1. "<<lid<<" "<<hid<<" "<<newW<<endl;
+            if(algoChoice==H2H){
+                for(int i=0;i<Tree[rank[lidM]].vAncestor.size();++i){
+                    if(Tree[rank[lidM]].vAncestor[i]==hid){
+                        int temp=Tree[rank[lidM]].pos.back();
+                        Tree[rank[lidM]].pos[Tree[rank[lidM]].pos.size()-1]=i;
+                        Tree[rank[lidM]].pos.push_back(temp);
+                        ifFind=true;
+                    }
+                }
+                if(!ifFind){//if false
+                    cout<<"Cross-branch edge! Should reorganize the tree structure! "<<lid<<" "<<hid<<" "<<newW<<endl;
+                    exit(1);
+                }
+                BottomUpNewShortcutInsertParti(lid,hid,newW,Tree,rank,newSCNum);
+            }
+            else{
+                BottomUpNewShortcutInsertPartiCH(lid,hid,newW,Tree,rank,newSCNum);
+            }
+
+//            cout<<"newSCNum: "<<newSCNum<<endl;
+        }
+    }
+
+//    vector<int> ProBeginVertexSet; //ProBeginVertexSet.clear();
+//    set<int> vertexIDChL; //vertexIDChL.clear();//record the vertex whose distanc labeling has changed
+    ProBeginVertexSetParti[pid].clear(); vertexIDChLParti[pid].clear();
+    vector<int> ProBeginVertexSetNew;
+    int ProBeginVertexID;
+    int ProID, ProIDM;
+    //processing the stars
+    while(!OC.empty()){
+        ProID=(*OC.begin()).x;
+        ProIDM=IDMap[ProID];
+        OC.erase(OC.begin());
+        vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProIDM]].vert;
+        bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
+        for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
+            int Cid=it->x; int Cw; int CidM=IDMap[Cid];
+            int cidH=Tree[rank[CidM]].height-1;
+
+            map<int,int> Hnei; //Hnei.clear();
+            vector<pair<int,int>> Lnei; //Lnei.clear();
+            for(int j=0;j<Vert.size();j++){
+                if(NodeOrder[Vert[j].first]>NodeOrder[Cid]){
+                    Hnei[Vert[j].first]=Vert[j].second.first;
+                }else if(NodeOrder[Vert[j].first]<NodeOrder[Cid]){
+                    Lnei.push_back(make_pair(Vert[j].first,Vert[j].second.first));
+                }else{
+                    Cw=Vert[j].second.first;
+                }
+            }
+
+//            if(ProID==1204){
+//                cout<<ProID<<" "<<Cid<<" "<<Cw<<endl;
+//            }
+
+            if(algoChoice==H2H){
+                if(Tree[rank[ProIDM]].dis[cidH]>Cw){
+                    Tree[rank[ProIDM]].dis[cidH]=Cw;
+                    Tree[rank[ProIDM]].FN[cidH]=true;
+                    ProIDdisCha=true;
+                    vUpdated[ProID]=true;
+                    Tree[rank[ProIDM]].DisRe.insert(Cid);
+                    Tree[rank[ProIDM]].cnt[cidH]=1;//new
+                }else if(Tree[rank[ProIDM]].dis[cidH]==Cw){
+                    Tree[rank[ProIDM]].FN[cidH]=true;
+                    Tree[rank[ProIDM]].cnt[cidH]+=1;//new
+                }
+            }
+
+
+            int hid2,hidHeight2,lid2,lidHeight2,wsum,lid2M;
+            for(int j=0;j<Tree[rank[CidM]].vert.size();j++){
+                hid2=Tree[rank[CidM]].vert[j].first;hidHeight2=Tree[rank[IDMap[hid2]]].height-1;
+                if(Hnei.find(hid2)!=Hnei.end()){
+                    wsum=Cw+Hnei[hid2];
+                    if(wsum<Tree[rank[CidM]].vert[j].second.first){
+                        Tree[rank[CidM]].vert[j].second.first=wsum;
+                        Tree[rank[CidM]].vert[j].second.second=1;
+                        SCre[Cid].insert(hid2);
+                        OC.insert(OrderCompMin(Cid));
+                    }else if(wsum==Tree[rank[CidM]].vert[j].second.first){
+                        Tree[rank[CidM]].vert[j].second.second+=1;
+                    }
+
+                }
+            }
+            for(int j=0;j<Lnei.size();j++){
+                lid2=Lnei[j].first; lid2M=IDMap[lid2];
+                lidHeight2=Tree[rank[lid2M]].height-1;
+                for(int k=0;k<Tree[rank[lid2M]].vert.size();k++){
+                    if(Tree[rank[lid2M]].vert[k].first==Cid){
+                        wsum=Cw+Lnei[j].second;
+                        if(Tree[rank[lid2M]].vert[k].second.first>wsum){
+                            Tree[rank[lid2M]].vert[k].second.first=wsum;
+                            Tree[rank[lid2M]].vert[k].second.second=1;
+                            SCre[lid2].insert(Cid);
+                            OC.insert(OrderCompMin(lid2));
+                        }else if(Tree[rank[lid2M]].vert[k].second.first==wsum){
+                            if(SCre[ProID].find(OrderCompp(lid2))==SCre[ProID].end()) {//if not found, avoid repeated count
+                                Tree[rank[lid2M]].vert[k].second.second += 1;
+                            }
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        if(ProIDdisCha){//if the distance labeling is dectected changed
+            vertexIDChLParti[pid].insert(ProID);
+            ProBeginVertexSetNew.clear(); ProBeginVertexSetNew.reserve(ProBeginVertexSetParti[pid].size()+1);
+            ProBeginVertexSetNew.push_back(ProID);
+            int rnew=rank[IDMap[ProID]],r;
+            for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
+                r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
+                    ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
+                }
+            }
+            ProBeginVertexSetParti[pid]=ProBeginVertexSetNew;
+        }
+    }
+
+    //cout<<"Finish bottom-up refresh"<<endl;
+    if(ifLabelU){
+        for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
+            ProBeginVertexID=ProBeginVertexSetParti[pid][i];
+            vector<int> linee; //linee.clear();
+            linee.reserve(heightMax);
+            int pachidd=Tree[Tree[rank[IDMap[ProBeginVertexID]]].pa].uniqueVertex;
+            while(Tree[rank[IDMap[pachidd]]].height>1){
+                linee.insert(linee.begin(),pachidd);
+                pachidd=Tree[Tree[rank[IDMap[pachidd]]].pa].uniqueVertex;
+            }
+            linee.insert(linee.begin(),pachidd);
+            EachNodeProBDis5Parti(rank[IDMap[ProBeginVertexID]], linee, vertexIDChLParti[pid],Tree,rank);
+        }
+    }
+
+    //return checkedDis.size();
+}
 
 //batch update for partition graph of PH2H
 void Graph::DecreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>>& Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, vector<pair<pair<int,int>,int>>& updatedSC, bool ifLabelU){
@@ -4084,9 +6049,8 @@ void Graph::DecreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
 
     int a,b,newW,lid,hid,lidM,hidM;
@@ -4146,7 +6110,7 @@ void Graph::DecreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
         vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProIDM]].vert;
         bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw; int CidM=IDMap[Cid];
+            int Cid=it->x; int Cw; int CidM=IDMap[Cid];
             int cidH=Tree[rank[CidM]].height-1;
 
             map<int,int> Hnei; //Hnei.clear();
@@ -4172,8 +6136,10 @@ void Graph::DecreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
                     ProIDdisCha=true;
                     vUpdated[ProID]=true;
                     Tree[rank[ProIDM]].DisRe.insert(Cid);
+                    Tree[rank[ProIDM]].cnt[cidH]=1;//new
                 }else if(Tree[rank[ProIDM]].dis[cidH]==Cw){
                     Tree[rank[ProIDM]].FN[cidH]=true;
+                    Tree[rank[ProIDM]].cnt[cidH]+=1;//new
                 }
             }
 
@@ -4206,7 +6172,9 @@ void Graph::DecreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
                             SCre[lid2].insert(Cid);
                             OC.insert(OrderCompMin(lid2));
                         }else if(Tree[rank[lid2M]].vert[k].second.first==wsum){
-                            Tree[rank[lid2M]].vert[k].second.second+=1;
+                            if(SCre[ProID].find(OrderCompp(lid2))==SCre[ProID].end()) {//if not found, avoid repeated count
+                                Tree[rank[lid2M]].vert[k].second.second += 1;
+                            }
                         }
 
                         break;
@@ -4222,7 +6190,7 @@ void Graph::DecreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
             int rnew=rank[IDMap[ProID]],r;
             for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
                 r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
-                if(LCAQueryOverlay(rnew,r)!=rnew){
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
                     ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
                 }
             }
@@ -4258,9 +6226,8 @@ void Graph::DecreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
 
     int a,b,oldW,newW,lid,hid,lidM,hidM;
@@ -4340,7 +6307,7 @@ void Graph::DecreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
         vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProIDM]].vert;
         bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw; int CidM=IDMap[Cid];
+            int Cid=it->x; int Cw; int CidM=IDMap[Cid];
             int cidH=Tree[rank[CidM]].height-1;
 
             map<int,int> Hnei; //Hnei.clear();
@@ -4400,7 +6367,9 @@ void Graph::DecreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
                             SCre[lid2].insert(Cid);
                             OC.insert(OrderCompMin(lid2));
                         }else if(Tree[rank[lid2M]].vert[k].second.first==wsum){
-                            Tree[rank[lid2M]].vert[k].second.second+=1;
+                            if(SCre[ProID].find(OrderCompp(lid2))==SCre[ProID].end()) {//if not found, avoid repeated count
+                                Tree[rank[lid2M]].vert[k].second.second += 1;
+                            }
                         }
 
                         break;
@@ -4416,7 +6385,7 @@ void Graph::DecreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
             int rnew=rank[IDMap[ProID]],r;
             for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
                 r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
-                if(LCAQueryOverlay(rnew,r)!=rnew){
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
                     ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
                 }
             }
@@ -4472,9 +6441,8 @@ void Graph::DecreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
 
     int a,b,newW,lid,hid,lidM,hidM;
@@ -4490,13 +6458,13 @@ void Graph::DecreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
         if(Neighbors[a].find(b)!=Neighbors[a].end()){
             Neighbors[a][b]=newW;
         }else{
-            cout<<"Not found edge! "<<endl; exit(1);
+            cout<<"Not found edge! "<<a<<" "<<b<<" "<<newW<<endl; exit(1);
         }
 
         if(Neighbors[b].find(a)!=Neighbors[b].end()){
             Neighbors[b][a]=newW;
         }else{
-            cout<<"Not found edge! "<<endl; exit(1);
+            cout<<"Not found edge! "<<b<<" "<<a<<" "<<newW<<endl; exit(1);
         }
 
         for(int i=0;i<Tree[rank[lidM]].vert.size();i++){
@@ -4529,7 +6497,7 @@ void Graph::DecreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
         vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProIDM]].vert;
         bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw; int CidM=IDMap[Cid];
+            int Cid=it->x; int Cw; int CidM=IDMap[Cid];
             int cidH=Tree[rank[CidM]].height-1;
 
             map<int,int> Hnei; //Hnei.clear();
@@ -4550,8 +6518,10 @@ void Graph::DecreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
                     Tree[rank[ProIDM]].FN[cidH]=true;
                     ProIDdisCha=true;
                     Tree[rank[ProIDM]].DisRe.insert(Cid);
+                    Tree[rank[ProIDM]].cnt[cidH]=1;//new
                 }else if(Tree[rank[ProIDM]].dis[cidH]==Cw){
                     Tree[rank[ProIDM]].FN[cidH]=true;
+                    Tree[rank[ProIDM]].cnt[cidH]+=1;//new
                 }
             }
 
@@ -4584,7 +6554,9 @@ void Graph::DecreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
                             SCre[lid2].insert(Cid);
                             OC.insert(OrderCompMin(lid2));
                         }else if(Tree[rank[lid2M]].vert[k].second.first==wsum){
-                            Tree[rank[lid2M]].vert[k].second.second+=1;
+                            if(SCre[ProID].find(OrderCompp(lid2))==SCre[ProID].end()) {//if not found, avoid repeated count
+                                Tree[rank[lid2M]].vert[k].second.second += 1;
+                            }
                         }
 
                         break;
@@ -4600,7 +6572,7 @@ void Graph::DecreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
             int rnew=rank[IDMap[ProID]],r;
             for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
                 r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
-                if(LCAQueryOverlay(rnew,r)!=rnew){
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
                     ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
                 }
             }
@@ -4637,9 +6609,8 @@ void Graph::DecreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; //OC.clear();//vertexID in decreasing node order
 
     int a,b,newW,lid,hid,lidM,hidM;
@@ -4699,7 +6670,7 @@ void Graph::DecreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
         vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProIDM]].vert;
         bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw; int CidM=IDMap[Cid];
+            int Cid=it->x; int Cw; int CidM=IDMap[Cid];
             int cidH=Tree[rank[CidM]].height-1;
 
             map<int,int> Hnei; //Hnei.clear();
@@ -4720,8 +6691,10 @@ void Graph::DecreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
                     Tree[rank[ProIDM]].FN[cidH]=true;
                     ProIDdisCha=true;
                     Tree[rank[ProIDM]].DisRe.insert(Cid);
+                    Tree[rank[ProIDM]].cnt[cidH]=1;//new
                 }else if(Tree[rank[ProIDM]].dis[cidH]==Cw){
                     Tree[rank[ProIDM]].FN[cidH]=true;
+                    Tree[rank[ProIDM]].cnt[cidH]+=1;//new
                 }
             }
 
@@ -4754,7 +6727,9 @@ void Graph::DecreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
                             SCre[lid2].insert(Cid);
                             OC.insert(OrderCompMin(lid2));
                         }else if(Tree[rank[lid2M]].vert[k].second.first==wsum){
-                            Tree[rank[lid2M]].vert[k].second.second+=1;
+                            if(SCre[ProID].find(OrderCompp(lid2))==SCre[ProID].end()) {//if not found, avoid repeated count
+                                Tree[rank[lid2M]].vert[k].second.second += 1;
+                            }
                         }
 
                         break;
@@ -4770,7 +6745,7 @@ void Graph::DecreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
             int rnew=rank[IDMap[ProID]],r;
             for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
                 r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
-                if(LCAQueryOverlay(rnew,r)!=rnew){
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
                     ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
                 }
             }
@@ -5005,7 +6980,10 @@ void Graph::eachNodeProcessIncrease1(int children, vector<int>& line, int& chang
     int childID=Tree[children].uniqueVertex;
     int childH=Tree[children].height-1;
     for(int i=0;i<Tree[children].dis.size();i++){
-        if(Tree[children].cnt[i]==0){
+//        if(childID==6410 && Tree[children].vAncestor[i]==6411){
+//            cout<<"Find 3. "<<childID<<" "<<Tree[children].vAncestor[i]<<" "<<Tree[children].dis[i]<<endl;
+//        }
+        if(Tree[children].cnt[i]<=0){
             vUpdated[childID] = true;
             changelabel+=1;
             //firstly, check which dis can be infected
@@ -5287,12 +7265,16 @@ void Graph::eachNodeProcessIncrease1Parti(int children, vector<int>& line, int& 
     int childH=Tree[children].height-1;
 //    int childM=IDMap[children];
 
-
+//    cout<<childID<<" "<<childH<<endl;
     for(int i=0;i<Tree[children].dis.size();i++){
-//        if(childID==84704){
+//        if(childID==7988){
 //            cout<<childID<<": "<<i<<", "<<Tree[children].vAncestor[i]<< " "<<Tree[children].cnt[i]<< endl;
 //        }
-        if(Tree[children].cnt[i]==0){//the distance from child to line[i] should be updated
+//        if(childID==7988 && Tree[children].vAncestor[i]==7984){
+//            cout<<"Find 4. "<<childID<<" "<<Tree[children].vAncestor[i]<<" "<<Tree[children].dis[i]<<endl;
+//        }
+
+        if(Tree[children].cnt[i]<=0){//the distance from child to line[i] should be updated
             if(i<BoundVertex[PartiTag[childID].first].size()){
                 vUpdated[childID] = true;
             }
@@ -5371,11 +7353,10 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; OC.clear();//vertexID in decreasing node order
-
+    bool flag=false;
     for(int k=0;k<wBatch.size();k++){
         int a=wBatch[k].first.first;
         int b=wBatch[k].first.second;
@@ -5385,20 +7366,24 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
         if(oldW!=newW){
             if(Neighbor[a].find(b)!=Neighbor[a].end()){
                 if(Neighbor[a][b]!=oldW){//only works for no-boundary
-                    cout<<"Inconsistent! "<<Neighbor[a][b]<<" "<<oldW<<endl; exit(1);
+                    cout<<"Inconsistent! "<<Neighbor[a][b]<<" "<<oldW<<endl;
+                    exit(1);
                 }
                 Neighbor[a][b]=newW;
-            }else{
-                cout<<"Wrong for Neighbors!"<<endl; exit(1);
             }
+//            else{
+//                cout<<"Wrong for Neighbors!"<<endl; exit(1);
+//            }
             if(Neighbor[b].find(a)!=Neighbor[b].end()){
                 if(Neighbor[b][a]!=oldW){
-                    cout<<"Inconsistent! "<<Neighbor[b][a]<<" "<<oldW<<endl; exit(1);
+                    cout<<"Inconsistent! "<<Neighbor[b][a]<<" "<<oldW<<endl;
+                    exit(1);
                 }
                 Neighbor[b][a]=newW;
-            }else{
-                cout<<"Wrong for Neighbors!"<<endl; exit(1);
             }
+//            else{
+//                cout<<"Wrong for Neighbors!"<<endl; exit(1);
+//            }
 
             int lid,hid;
             if(NodeOrder[a]<NodeOrder[b]){
@@ -5406,7 +7391,9 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
             }else{
                 lid=b;hid=a;
             }
-
+//            if(lid==6410 && hid==6411){
+//                cout<<"Find. "<<lid<<" "<<hid<<" "<<oldW<<" "<<newW<<endl;
+//            }
             for(int i=0;i<Tree[rank[lid]].vert.size();i++){
                 if(Tree[rank[lid]].vert[i].first==hid){
                     if(Tree[rank[lid]].vert[i].second.first==oldW){
@@ -5417,6 +7404,9 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
                             OC.insert(OrderCompMin(lid));
                         }
                     }
+//                    else{
+//                        cout<<"oldW is incorrect. "<<lid<<" "<<hid<<" "<<oldW<<" "<<Tree[rank[lid]].vert[i].second.first<<endl; exit(1);
+//                    }
                     break;
                 }
             }
@@ -5444,7 +7434,7 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
         line.insert(line.begin(),pachid);
 
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw=OCdis[make_pair(ProID,Cid)];
+            int Cid=it->x; int Cw=OCdis[make_pair(ProID,Cid)];
             int cidH=Tree[rank[Cid]].height-1;
 
             map<int,int> Hnei; //Hnei.clear();
@@ -5456,6 +7446,12 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
                     Lnei.push_back(make_pair(Vert[j].first,Vert[j].second.first));
                 }
             }
+
+//            if(ProID==6410 && Cid==6411){
+//                cout<<"Find 2. "<<ProID<<" "<<Cid<<" "<<Cw<<endl;
+//                flag=true;
+//            }
+
             //check the affected shortcuts
             int hid,lid;
             for(int j=0;j<Tree[rank[Cid]].vert.size();j++){
@@ -5476,11 +7472,13 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
                 for(int k=0;k<Tree[rank[lid]].vert.size();k++){
                     if(Tree[rank[lid]].vert[k].first==Cid){
                         if(Tree[rank[lid]].vert[k].second.first==Cw+Lnei[j].second){
-                            Tree[rank[lid]].vert[k].second.second-=1;
-                            if(Tree[rank[lid]].vert[k].second.second<1){
-                                SCre[lid].insert(Cid);
-                                OC.insert(OrderCompMin(lid));
-                                OCdis[make_pair(lid,Cid)]=Cw+Lnei[j].second;
+                            if(SCre[ProID].find(lid)==SCre[ProID].end()) {//if not found
+                                Tree[rank[lid]].vert[k].second.second -= 1;
+                                if (Tree[rank[lid]].vert[k].second.second < 1) {
+                                    SCre[lid].insert(Cid);
+                                    OC.insert(OrderCompMin(lid));
+                                    OCdis[make_pair(lid, Cid)] = Cw + Lnei[j].second;
+                                }
                             }
                         }
                         break;
@@ -5488,38 +7486,13 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
                 }
             }
 
-            if(algoChoice==H2H){
-                //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
-                if(Tree[rank[ProID]].FN[cidH]){
-                    influence=true;
-                    //higher than Cid
-                    for(int i=0;i<cidH;i++){
-                        if(Tree[rank[ProID]].dis[i]==Cw+Tree[rank[Cid]].dis[i]){
-                            Tree[rank[ProID]].cnt[i]-=1;
-                        }
-                    }
-
-                    //equal to Cid
-                    Tree[rank[ProID]].FN[cidH]=false;
-                    Tree[rank[ProID]].cnt[cidH]-=1;
-
-                    //lower than Cid
-                    for(int i=cidH+1;i<Tree[rank[ProID]].dis.size();i++){
-                        if(Tree[rank[ProID]].dis[i]==Cw+Tree[rank[line[i]]].dis[cidH]){
-                            Tree[rank[ProID]].cnt[i]-=1;
-                        }
-                    }
-                }
-            }
-
-
             //get the new value of shortcut
             //	cout<<Cw<<" increase to ";
-            Cw=INF; int countwt=0;
+            int newCw=INF; int countwt=0;
 
             for(auto it2=Neighbor[ProID].begin();it2!=Neighbor[ProID].end();++it2){
                 if(it2->first==Cid){
-                    Cw=it2->second;//the weight value in the original graph
+                    newCw=it2->second;//the weight value in the original graph
                     countwt=1;
                     break;
                 }
@@ -5545,10 +7518,10 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
                         }
                     }
 
-                    if(ssw+wtt<Cw){
-                        Cw=ssw+wtt;
+                    if(ssw+wtt<newCw){
+                        newCw=ssw+wtt;
                         countwt=1;
-                    }else if(ssw+wtt==Cw){
+                    }else if(ssw+wtt==newCw){
                         countwt+=1;
                     }
                 }
@@ -5558,11 +7531,44 @@ void Graph::IncreaseOverlayBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBat
             //refresh the shortcut to the new value
             for(int i=0;i<Tree[rank[ProID]].vert.size();i++){
                 if(Tree[rank[ProID]].vert[i].first==Cid){
-                    Tree[rank[ProID]].vert[i].second.first=Cw;
+                    Tree[rank[ProID]].vert[i].second.first=newCw;
                     Tree[rank[ProID]].vert[i].second.second=countwt;
                     break;
                 }
             }
+
+
+            if(algoChoice==H2H){
+                if(newCw>Cw){
+                    //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
+                    if(Tree[rank[ProID]].FN[cidH]){
+                        influence=true;
+                        //higher than Cid
+                        for(int i=0;i<cidH;i++){
+                            if(Tree[rank[ProID]].dis[i]==Cw+Tree[rank[Cid]].dis[i]){
+                                Tree[rank[ProID]].cnt[i]-=1;
+                            }
+                        }
+
+                        //equal to Cid
+                        Tree[rank[ProID]].FN[cidH]=false;
+                        Tree[rank[ProID]].cnt[cidH]-=1;
+                        if(flag){
+                            cout<<"Flag. "<<ProID<<" "<<Cid<<" "<<Cw<<" "<<newCw<<" "<<Tree[rank[ProID]].cnt[cidH]<<endl;
+                            flag=false;
+                        }
+
+                        //lower than Cid
+                        for(int i=cidH+1;i<Tree[rank[ProID]].dis.size();i++){
+                            if(Tree[rank[ProID]].dis[i]==Cw+Tree[rank[line[i]]].dis[cidH]){
+                                Tree[rank[ProID]].cnt[i]-=1;
+                            }
+                        }
+                    }
+                }
+
+            }
+
         }
 
         if(influence){
@@ -5626,9 +7632,8 @@ void Graph::IncreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; OC.clear();//vertexID in decreasing node order
 
     for(int k=0;k<wBatch.size();k++){
@@ -5637,16 +7642,24 @@ void Graph::IncreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
         int oldW=wBatch[k].second.first;
         int newW=wBatch[k].second.second;
 
-        if(oldW!=newW){
+        if(oldW<newW){
             for(int i=0;i<Neighbors[a].size();i++){
                 if(Neighbors[a][i].first==b){
-                    Neighbors[a][i].second=newW;
+                    if(Neighbors[a][i].second<newW){
+                        Neighbors[a][i].second=newW;
+                    }else{
+                        cout<<"Wrong update. "<<Neighbors[a][i].second<<" "<<newW<<endl; exit(1);
+                    }
                     break;
                 }
             }
             for(int i=0;i<Neighbors[b].size();i++){
                 if(Neighbors[b][i].first==a){
-                    Neighbors[b][i].second=newW;
+                    if(Neighbors[b][i].second<newW){
+                        Neighbors[b][i].second=newW;
+                    }else{
+                        cout<<"Wrong update. "<<Neighbors[b][i].second<<" "<<newW<<endl; exit(1);
+                    }
                     break;
                 }
             }
@@ -5696,7 +7709,7 @@ void Graph::IncreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
         line.insert(line.begin(),pachid);
 
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw=OCdis[make_pair(ProID,Cid)];
+            int Cid=it->x; int Cw=OCdis[make_pair(ProID,Cid)];
             int cidH=Tree[rank[IDMap[Cid]]].height-1;
             int CidM=IDMap[Cid];
 
@@ -5709,6 +7722,8 @@ void Graph::IncreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
                     Lnei.push_back(make_pair(Vert[j].first,Vert[j].second.first));
                 }
             }
+
+
             //check the affected shortcuts
             int hid2,lid2,lid2M;
             for(int j=0;j<Tree[rank[CidM]].vert.size();j++){
@@ -5729,11 +7744,13 @@ void Graph::IncreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
                 for(int k=0;k<Tree[rank[lid2M]].vert.size();k++){
                     if(Tree[rank[lid2M]].vert[k].first==Cid){
                         if(Tree[rank[lid2M]].vert[k].second.first==Cw+Lnei[j].second){
-                            Tree[rank[lid2M]].vert[k].second.second-=1;
-                            if(Tree[rank[lid2M]].vert[k].second.second<1){
-                                SCre[lid2].insert(Cid);
-                                OC.insert(OrderCompMin(lid2));
-                                OCdis[make_pair(lid2,Cid)]=Cw+Lnei[j].second;
+                            if(SCre[ProID].find(lid2)==SCre[ProID].end()) {//if not found
+                                Tree[rank[lid2M]].vert[k].second.second -= 1;
+                                if (Tree[rank[lid2M]].vert[k].second.second < 1) {
+                                    SCre[lid2].insert(Cid);
+                                    OC.insert(OrderCompMin(lid2));
+                                    OCdis[make_pair(lid2, Cid)] = Cw + Lnei[j].second;
+                                }
                             }
                         }
                         break;
@@ -5741,38 +7758,13 @@ void Graph::IncreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
                 }
             }
 
-            if(algoChoice==H2H){
-                //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
-                if(Tree[rank[ProIDM]].FN[cidH]){
-                    influence=true;
-                    //higher than Cid
-                    for(int i=0;i<cidH;i++){
-                        if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[CidM]].dis[i]){
-                            Tree[rank[ProIDM]].cnt[i]-=1;
-                        }
-                    }
-
-                    //equal to Cid
-                    Tree[rank[ProIDM]].FN[cidH]=false;
-                    Tree[rank[ProIDM]].cnt[cidH]-=1;
-
-                    //lower than Cid
-                    for(int i=cidH+1;i<Tree[rank[ProIDM]].dis.size();i++){
-                        if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[IDMap[line[i]]]].dis[cidH]){
-                            Tree[rank[ProIDM]].cnt[i]-=1;
-                        }
-                    }
-                }
-            }
-
-
             //get the new value of shortcut
             //	cout<<Cw<<" increase to ";
-            Cw=INF; int countwt=0;
+            int newCw=INF; int countwt=0;
 
             for(auto it2=Neighbors[ProID].begin();it2!=Neighbors[ProID].end();++it2){
                 if(it2->first==Cid){
-                    Cw=it2->second;//the weight value in the original graph
+                    newCw=it2->second;//the weight value in the original graph
                     countwt=1;
                     break;
                 }
@@ -5798,28 +7790,58 @@ void Graph::IncreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
                         }
                     }
 
-                    if(ssw+wtt<Cw){
-                        Cw=ssw+wtt;
+                    if(ssw+wtt<newCw){
+                        newCw=ssw+wtt;
                         countwt=1;
-                    }else if(ssw+wtt==Cw){
+                    }else if(ssw+wtt==newCw){
                         countwt+=1;
                     }
                 }
             }
 
-            if(PartiTag[ProID].second){//if boundary vertex
-                updatedSC.emplace_back(make_pair(ProID,Cid),Cw);
-            }
+//            if(PartiTag[ProID].second){//if boundary vertex
+//                updatedSC.emplace_back(make_pair(ProID,Cid),newCw);
+//            }
 
             //cout<<Cw<<endl;
             //refresh the shortcut to the new value
             for(int i=0;i<Tree[rank[ProIDM]].vert.size();i++){
                 if(Tree[rank[ProIDM]].vert[i].first==Cid){
-                    Tree[rank[ProIDM]].vert[i].second.first=Cw;
+                    Tree[rank[ProIDM]].vert[i].second.first=newCw;
                     Tree[rank[ProIDM]].vert[i].second.second=countwt;
                     break;
                 }
             }
+
+            if(algoChoice==H2H){
+                if(newCw>Cw){
+                    //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
+                    if(Tree[rank[ProIDM]].FN[cidH]){
+                        influence=true;
+                        //higher than Cid
+                        for(int i=0;i<cidH;i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[CidM]].dis[i]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+
+                        //equal to Cid
+                        Tree[rank[ProIDM]].FN[cidH]=false;
+                        Tree[rank[ProIDM]].cnt[cidH]-=1;
+
+                        //lower than Cid
+                        for(int i=cidH+1;i<Tree[rank[ProIDM]].dis.size();i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[IDMap[line[i]]]].dis[cidH]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+                    }
+                }
+
+            }
+
+
+
         }
 
         if(influence){
@@ -5828,7 +7850,7 @@ void Graph::IncreasePartiBatch(int pid, vector<pair<pair<int,int>,pair<int,int>>
             int rnew=rank[IDMap[ProID]],r;
             for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
                 r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
-                if(LCAQueryOverlay(rnew,r)!=rnew){
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
                     ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
                 }
             }
@@ -5864,9 +7886,8 @@ void Graph::IncreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; OC.clear();//vertexID in decreasing node order
 
     for(int k=0;k<wBatch.size();k++){
@@ -5945,7 +7966,7 @@ void Graph::IncreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
         line.insert(line.begin(),pachid);
 
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw=OCdis[make_pair(ProID,Cid)];
+            int Cid=it->x; int Cw=OCdis[make_pair(ProID,Cid)];
             int cidH=Tree[rank[IDMap[Cid]]].height-1;
             int CidM=IDMap[Cid];
 
@@ -5978,11 +7999,13 @@ void Graph::IncreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
                 for(int k=0;k<Tree[rank[lid2M]].vert.size();k++){
                     if(Tree[rank[lid2M]].vert[k].first==Cid){
                         if(Tree[rank[lid2M]].vert[k].second.first==Cw+Lnei[j].second){
-                            Tree[rank[lid2M]].vert[k].second.second-=1;
-                            if(Tree[rank[lid2M]].vert[k].second.second<1){
-                                SCre[lid2].insert(Cid);
-                                OC.insert(OrderCompMin(lid2));
-                                OCdis[make_pair(lid2,Cid)]=Cw+Lnei[j].second;
+                            if(SCre[ProID].find(lid2)==SCre[ProID].end()) {//if not found
+                                Tree[rank[lid2M]].vert[k].second.second -= 1;
+                                if (Tree[rank[lid2M]].vert[k].second.second < 1) {
+                                    SCre[lid2].insert(Cid);
+                                    OC.insert(OrderCompMin(lid2));
+                                    OCdis[make_pair(lid2, Cid)] = Cw + Lnei[j].second;
+                                }
                             }
                         }
                         break;
@@ -5990,30 +8013,6 @@ void Graph::IncreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
                 }
             }
 
-//            if(ProID==84704){
-//                cout<<"ProID "<<ProID<<endl;
-//            }
-            //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
-            /*if(Tree[rank[ProIDM]].FN[cidH]){
-                influence=true;
-                //higher than Cid
-                for(int i=0;i<cidH;i++){
-                    if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[CidM]].dis[i]){
-                        Tree[rank[ProIDM]].cnt[i]-=1;
-                    }
-                }
-
-                //equal to Cid
-                Tree[rank[ProIDM]].FN[cidH]=false;
-                Tree[rank[ProIDM]].cnt[cidH]-=1;
-
-                //lower than Cid
-                for(int i=cidH+1;i<Tree[rank[ProIDM]].dis.size();i++){
-                    if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[IDMap[line[i]]]].dis[cidH]){
-                        Tree[rank[ProIDM]].cnt[i]-=1;
-                    }
-                }
-            }*/
 
             //get the new value of shortcut
             //	cout<<Cw<<" increase to ";
@@ -6061,6 +8060,9 @@ void Graph::IncreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
                 updatedSC.emplace_back(make_pair(ProID,Cid),newCw);
             }
 
+//            if(ProID==788 && Cid==835){
+//                cout<<"Find. "<<ProID<<" "<<Cid<<" "<<newCw<<" "<<countwt<<endl;
+//            }
             //cout<<Cw<<endl;
             //refresh the shortcut to the new value
             for(int i=0;i<Tree[rank[ProIDM]].vert.size();i++){
@@ -6070,6 +8072,33 @@ void Graph::IncreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
                     break;
                 }
             }
+
+            if(algoChoice==H2H){
+                if(newCw>Cw){
+                    if(Tree[rank[ProIDM]].FN[cidH]){
+                        influence=true;
+                        //higher than Cid
+                        for(int i=0;i<cidH;i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[CidM]].dis[i]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+
+                        //equal to Cid
+                        Tree[rank[ProIDM]].FN[cidH]=false;
+                        Tree[rank[ProIDM]].cnt[cidH]-=1;
+
+                        //lower than Cid
+                        for(int i=cidH+1;i<Tree[rank[ProIDM]].dis.size();i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[IDMap[line[i]]]].dis[cidH]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+                    }
+                }
+            }
+
+
         }
 
         if(influence){
@@ -6078,7 +8107,7 @@ void Graph::IncreasePartiBatchForOpt(int pid, vector<pair<pair<int,int>,pair<int
             int rnew=rank[IDMap[ProID]],r;
             for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
                 r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
-                if(LCAQueryOverlay(rnew,r)!=rnew){
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
                     ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
                 }
             }
@@ -6115,9 +8144,8 @@ void Graph::IncreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; OC.clear();//vertexID in decreasing node order
 
     for(int k=0;k<wBatch.size();k++){
@@ -6184,7 +8212,7 @@ void Graph::IncreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
         line.insert(line.begin(),pachid);
 
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw=OCdis[make_pair(ProID,Cid)];
+            int Cid=it->x; int Cw=OCdis[make_pair(ProID,Cid)];
             int cidH=Tree[rank[IDMap[Cid]]].height-1;
             int CidM=IDMap[Cid];
 
@@ -6217,11 +8245,13 @@ void Graph::IncreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
                 for(int k=0;k<Tree[rank[lid2M]].vert.size();k++){
                     if(Tree[rank[lid2M]].vert[k].first==Cid){
                         if(Tree[rank[lid2M]].vert[k].second.first==Cw+Lnei[j].second){
-                            Tree[rank[lid2M]].vert[k].second.second-=1;
-                            if(Tree[rank[lid2M]].vert[k].second.second<1){
-                                SCre[lid2].insert(Cid);
-                                OC.insert(OrderCompMin(lid2));
-                                OCdis[make_pair(lid2,Cid)]=Cw+Lnei[j].second;
+                            if(SCre[ProID].find(lid2)==SCre[ProID].end()) {//if not found
+                                Tree[rank[lid2M]].vert[k].second.second -= 1;
+                                if (Tree[rank[lid2M]].vert[k].second.second < 1) {
+                                    SCre[lid2].insert(Cid);
+                                    OC.insert(OrderCompMin(lid2));
+                                    OCdis[make_pair(lid2, Cid)] = Cw + Lnei[j].second;
+                                }
                             }
                         }
                         break;
@@ -6229,38 +8259,13 @@ void Graph::IncreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
                 }
             }
 
-            if(algoChoice==H2H){
-                //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
-                if(Tree[rank[ProIDM]].FN[cidH]){
-                    influence=true;
-                    //higher than Cid
-                    for(int i=0;i<cidH;i++){
-                        if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[CidM]].dis[i]){
-                            Tree[rank[ProIDM]].cnt[i]-=1;
-                        }
-                    }
-
-                    //equal to Cid
-                    Tree[rank[ProIDM]].FN[cidH]=false;
-                    Tree[rank[ProIDM]].cnt[cidH]-=1;
-
-                    //lower than Cid
-                    for(int i=cidH+1;i<Tree[rank[ProIDM]].dis.size();i++){
-                        if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[IDMap[line[i]]]].dis[cidH]){
-                            Tree[rank[ProIDM]].cnt[i]-=1;
-                        }
-                    }
-                }
-            }
-
-
             //get the new value of shortcut
             //	cout<<Cw<<" increase to ";
-            Cw=INF; int countwt=0;
+            int newCw=INF; int countwt=0;
 
             for(auto it2=Neighbors[ProID].begin();it2!=Neighbors[ProID].end();++it2){
                 if(it2->first==Cid){
-                    Cw=it2->second;//the weight value in the original graph
+                    newCw=it2->second;//the weight value in the original graph
                     countwt=1;
                     break;
                 }
@@ -6289,10 +8294,10 @@ void Graph::IncreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
                         }
                     }
 
-                    if(ssw+wtt<Cw){
-                        Cw=ssw+wtt;
+                    if(ssw+wtt<newCw){
+                        newCw=ssw+wtt;
                         countwt=1;
-                    }else if(ssw+wtt==Cw){
+                    }else if(ssw+wtt==newCw){
                         countwt+=1;
                     }
                 }
@@ -6302,11 +8307,41 @@ void Graph::IncreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
             //refresh the shortcut to the new value
             for(int i=0;i<Tree[rank[ProIDM]].vert.size();i++){
                 if(Tree[rank[ProIDM]].vert[i].first==Cid){
-                    Tree[rank[ProIDM]].vert[i].second.first=Cw;
+                    Tree[rank[ProIDM]].vert[i].second.first=newCw;
                     Tree[rank[ProIDM]].vert[i].second.second=countwt;
                     break;
                 }
             }
+
+            if(algoChoice==H2H){
+                if(newCw>Cw){
+                    //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
+                    if(Tree[rank[ProIDM]].FN[cidH]){
+                        influence=true;
+                        //higher than Cid
+                        for(int i=0;i<cidH;i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[CidM]].dis[i]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+
+                        //equal to Cid
+                        Tree[rank[ProIDM]].FN[cidH]=false;
+                        Tree[rank[ProIDM]].cnt[cidH]-=1;
+
+                        //lower than Cid
+                        for(int i=cidH+1;i<Tree[rank[ProIDM]].dis.size();i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[IDMap[line[i]]]].dis[cidH]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+                    }
+                }
+
+            }
+
+
+
         }
 
         if(influence){
@@ -6315,7 +8350,7 @@ void Graph::IncreasePartiBatchPost(int pid, vector<pair<pair<int,int>,pair<int,i
             int rnew=rank[IDMap[ProID]],r;
             for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
                 r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
-                if(LCAQueryOverlay(rnew,r)!=rnew){
+                if(LCAQueryPartitionPost(rnew,r,pid)!=rnew){
                     ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
                 }
             }
@@ -6351,9 +8386,272 @@ void Graph::IncreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
 
     //NodeOrderss.clear();
 //    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-    vector<set<int>> SCre; //SCre.clear();
-    set<int> ss; //ss.clear();
-    SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
+    set<OrderCompMin> OC; OC.clear();//vertexID in decreasing node order
+    bool flag=false;
+
+    for(int k=0;k<wBatch.size();k++){
+        int a=wBatch[k].first.first;
+        int b=wBatch[k].first.second;
+        int oldW=wBatch[k].second.first;
+        int newW=wBatch[k].second.second;
+
+        if(oldW!=newW){
+            for(int i=0;i<Neighbors[a].size();i++){
+                if(Neighbors[a][i].first==b){
+                    Neighbors[a][i].second=newW;
+                    break;
+                }
+            }
+            for(int i=0;i<Neighbors[b].size();i++){
+                if(Neighbors[b][i].first==a){
+                    Neighbors[b][i].second=newW;
+                    break;
+                }
+            }
+
+            int lid,hid;
+            if(NodeOrder[a]<NodeOrder[b]){
+                lid=a;hid=b;
+            }else{
+                lid=b;hid=a;
+            }
+            int lidM=IDMap[lid];
+
+            for(int i=0;i<Tree[rank[lidM]].vert.size();i++){
+                if(Tree[rank[lidM]].vert[i].first==hid){
+//                    if(lid==7988 && hid==7984){
+//                        cout<<"Find 1. "<<lid<<" "<<hid<<" "<<Tree[rank[lidM]].vert[i].second.first<<" "<<Tree[rank[lidM]].vert[i].second.second <<" "<<oldW<<endl;
+//                    }
+                    if(Tree[rank[lidM]].vert[i].second.first==oldW){
+                        Tree[rank[lidM]].vert[i].second.second-=1;
+                        if(Tree[rank[lidM]].vert[i].second.second<1){
+                            OCdis[make_pair(lid,hid)]=oldW;
+                            SCre[lid].insert(hid);
+                            OC.insert(OrderCompMin(lid));
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+//    vector<int> ProBeginVertexSet; ProBeginVertexSet.clear();
+    ProBeginVertexSetParti[pid].clear();
+    vector<int> ProBeginVertexSetNew;
+    bool influence;
+    int ProID, ProIDM; vector<int> line;
+    while(!OC.empty()){
+        ProID=(*OC.begin()).x; ProIDM=IDMap[ProID];
+        OC.erase(OC.begin());
+        vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProIDM]].vert;
+        influence=false;
+
+        //each ProID corresponds to a line
+        line.clear(); line.reserve(heightMax);
+        int pachid=ProID;
+        while(Tree[rank[IDMap[pachid]]].height>1){
+            line.insert(line.begin(),pachid);
+            pachid=Tree[Tree[rank[IDMap[pachid]]].pa].uniqueVertex;
+        }
+        line.insert(line.begin(),pachid);
+
+        for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
+            int Cid=it->x; int Cw=OCdis[make_pair(ProID,Cid)];
+            int cidH=Tree[rank[IDMap[Cid]]].height-1;
+            int CidM=IDMap[Cid];
+
+            map<int,int> Hnei; //Hnei.clear();
+            vector<pair<int,int>> Lnei; //Lnei.clear();
+            for(int j=0;j<Vert.size();j++){
+                if(NodeOrder[Vert[j].first]>NodeOrder[Cid]){
+                    Hnei[Vert[j].first]=Vert[j].second.first;
+                }else if(NodeOrder[Vert[j].first]<NodeOrder[Cid]){
+                    Lnei.push_back(make_pair(Vert[j].first,Vert[j].second.first));
+                }
+            }
+
+
+
+            //check the affected shortcuts
+            int hid2,lid2,lid2M;
+            for(int j=0;j<Tree[rank[CidM]].vert.size();j++){
+                hid2=Tree[rank[CidM]].vert[j].first;
+                if(Hnei.find(hid2)!=Hnei.end()){
+                    if(Cw+Hnei[hid2]==Tree[rank[CidM]].vert[j].second.first){
+                        Tree[rank[CidM]].vert[j].second.second-=1;
+                        if(Tree[rank[CidM]].vert[j].second.second<1){
+                            SCre[Cid].insert(hid2);
+                            OC.insert(OrderCompMin(Cid));
+                            OCdis[make_pair(Cid,hid2)]=Cw+Hnei[hid2];
+                        }
+                    }
+                }
+            }
+            for(int j=0;j<Lnei.size();j++){
+                lid2=Lnei[j].first; lid2M=IDMap[lid2];
+                for(int k=0;k<Tree[rank[lid2M]].vert.size();k++){
+                    if(Tree[rank[lid2M]].vert[k].first==Cid){
+                        if(Tree[rank[lid2M]].vert[k].second.first==Cw+Lnei[j].second){
+                            if(SCre[ProID].find(lid2)==SCre[ProID].end()) {//if not found
+                                Tree[rank[lid2M]].vert[k].second.second -= 1;
+                                if (Tree[rank[lid2M]].vert[k].second.second < 1) {
+                                    SCre[lid2].insert(Cid);
+                                    OC.insert(OrderCompMin(lid2));
+                                    OCdis[make_pair(lid2, Cid)] = Cw + Lnei[j].second;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+
+            //get the new value of shortcut
+            //	cout<<Cw<<" increase to ";
+            int newCw=INF; int countwt=0;
+            for(auto it2=Neighbors[ProID].begin();it2!=Neighbors[ProID].end();++it2){
+                if(it2->first==Cid){
+                    newCw=it2->second;//the weight value in the original graph
+                    countwt=1;
+                    break;
+                }
+            }
+
+            int ssw,wtt,wid,widM;
+            vector<pair<int,int>> Wnodes;
+            Wnodes.clear();
+            /*if(SCconNodes.find(make_pair(ProID,Cid))!=SCconNodes.end())
+                Wnodes=SCconNodes[make_pair(ProID,Cid)];
+            else if(SCconNodes.find(make_pair(Cid,ProID))!=SCconNodes.end())
+                Wnodes=SCconNodes[make_pair(Cid,ProID)];*/
+            if(ProID<Cid)
+                Wnodes=SCconNodesMTP[ProID][Cid]; //cout<<"wid num "<<Wnodes.size()<<endl;
+            else
+                Wnodes=SCconNodesMTP[Cid][ProID];
+            if(Wnodes.size()>0){
+                for(int i=0;i<Wnodes.size();i++){
+                    wid=Wnodes[i].first; widM=IDMap[wid];
+                    for(int j=0;j<Tree[rank[widM]].vert.size();j++){
+                        if(Tree[rank[widM]].vert[j].first==ProID){
+                            ssw=Tree[rank[widM]].vert[j].second.first;
+                        }
+                        if(Tree[rank[widM]].vert[j].first==Cid){
+                            wtt=Tree[rank[widM]].vert[j].second.first;
+                        }
+                    }
+
+                    if(ssw+wtt<newCw){
+                        newCw=ssw+wtt;
+                        countwt=1;
+                    }else if(ssw+wtt==newCw){
+                        countwt+=1;
+                    }
+                }
+            }
+
+//            if(ProID==7988 && Cid==7984){
+//                cout<<"Find 2. "<<ProID<<" "<<Cid<<" "<<Cw<< " "<<newCw<<endl;
+//            }
+            //cout<<Cw<<endl;
+            //refresh the shortcut to the new value
+            for(int i=0;i<Tree[rank[ProIDM]].vert.size();i++){
+                if(Tree[rank[ProIDM]].vert[i].first==Cid){
+                    Tree[rank[ProIDM]].vert[i].second.first=newCw;
+                    Tree[rank[ProIDM]].vert[i].second.second=countwt;
+                    break;
+                }
+            }
+
+            if(algoChoice==H2H){
+                if(newCw>Cw){
+                    //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
+                    if(Tree[rank[ProIDM]].FN[cidH]){
+                        influence=true;
+                        //higher than Cid
+                        for(int i=0;i<cidH;i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[CidM]].dis[i]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+
+                        //equal to Cid
+                        Tree[rank[ProIDM]].FN[cidH]=false;
+                        Tree[rank[ProIDM]].cnt[cidH]-=1;
+//                        if(ProID==7988 && Cid==7984){
+//                            cout<<"Find 3. "<<ProID<<" "<<Cid<<" "<<Tree[rank[ProIDM]].cnt[cidH]<<" "<<Tree[rank[ProIDM]].height<<endl;
+//                            flag=true;
+//                        }
+                        //lower than Cid
+                        for(int i=cidH+1;i<Tree[rank[ProIDM]].dis.size();i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[IDMap[line[i]]]].dis[cidH]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+                    }
+                }
+
+            }
+
+
+
+        }
+
+        if(influence){
+            ProBeginVertexSetNew.clear(); ProBeginVertexSetNew.reserve(ProBeginVertexSetParti[pid].size()+1);
+            ProBeginVertexSetNew.push_back(ProID);
+            int rnew=rank[IDMap[ProID]],r;
+            for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
+                r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
+                    ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
+                }
+            }
+            ProBeginVertexSetParti[pid]=ProBeginVertexSetNew;
+//            if(flag){
+//                cout<<"Flag "<<ProID;
+//                for(int j=0;j<ProBeginVertexSetNew.size();++j){
+//                    cout<<" "<<ProBeginVertexSetNew[j]<<"("<<Tree[rank[IDMap[ProBeginVertexSetNew[j]]]].height<<")";
+//                }
+//                cout<<endl;
+////                flag=false;
+//            }
+        }
+
+    }
+
+    if(ifLabelU){
+        int ProBeginVertexID;
+        for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
+            ProBeginVertexID=ProBeginVertexSetParti[pid][i];
+//            cout<<"ProBeginVertex ID "<<ProBeginVertexID<<" "<<Tree[rank[IDMap[ProBeginVertexID]]].uniqueVertex<<" "<<Tree[rank[IDMap[ProBeginVertexID]]].height<<endl;
+            vector<int> linee; //linee.clear();
+            linee.reserve(heightMax);
+            int pachidd=Tree[Tree[rank[IDMap[ProBeginVertexID]]].pa].uniqueVertex;
+            while(Tree[rank[IDMap[pachidd]]].height>1){
+                linee.insert(linee.begin(),pachidd);
+                pachidd=Tree[Tree[rank[IDMap[pachidd]]].pa].uniqueVertex;
+            }
+            linee.insert(linee.begin(),pachidd);
+
+            eachNodeProcessIncrease1Parti(rank[IDMap[ProBeginVertexID]], linee,checknum,Tree,rank,VidtoTNidP);
+        }
+    }
+
+    //return checknum;
+}
+
+void Graph::EdgeDeletePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch, vector<vector<pair<int,int>>> &Neighbors, vector<Node> &Tree, vector<int> &rank, int heightMax, bool ifLabelU){
+    int checknum=0;
+    map<pair<int,int>,int> OCdis;//{(s,t),d} (order[s]<order[t]) maintain the old distance before refreshed and avoid search in the adjacent list
+    OCdis.clear();
+
+    //NodeOrderss.clear();
+//    NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
+    vector<set<OrderCompp>> SCre; //SCre.clear();
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
     set<OrderCompMin> OC; OC.clear();//vertexID in decreasing node order
 
     for(int k=0;k<wBatch.size();k++){
@@ -6366,6 +8664,7 @@ void Graph::IncreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
             for(int i=0;i<Neighbors[a].size();i++){
                 if(Neighbors[a][i].first==b){
                     Neighbors[a][i].second=newW;
+//                    Neighbors[a].erase(Neighbors[a].begin()+i);
                     break;
                 }
             }
@@ -6421,7 +8720,7 @@ void Graph::IncreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
         line.insert(line.begin(),pachid);
 
         for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-            int Cid=*it; int Cw=OCdis[make_pair(ProID,Cid)];
+            int Cid=it->x; int Cw=OCdis[make_pair(ProID,Cid)];
             int cidH=Tree[rank[IDMap[Cid]]].height-1;
             int CidM=IDMap[Cid];
 
@@ -6454,11 +8753,13 @@ void Graph::IncreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
                 for(int k=0;k<Tree[rank[lid2M]].vert.size();k++){
                     if(Tree[rank[lid2M]].vert[k].first==Cid){
                         if(Tree[rank[lid2M]].vert[k].second.first==Cw+Lnei[j].second){
-                            Tree[rank[lid2M]].vert[k].second.second-=1;
-                            if(Tree[rank[lid2M]].vert[k].second.second<1){
-                                SCre[lid2].insert(Cid);
-                                OC.insert(OrderCompMin(lid2));
-                                OCdis[make_pair(lid2,Cid)]=Cw+Lnei[j].second;
+                            if(SCre[ProID].find(lid2)==SCre[ProID].end()) {//if not found
+                                Tree[rank[lid2M]].vert[k].second.second -= 1;
+                                if (Tree[rank[lid2M]].vert[k].second.second < 1) {
+                                    SCre[lid2].insert(Cid);
+                                    OC.insert(OrderCompMin(lid2));
+                                    OCdis[make_pair(lid2, Cid)] = Cw + Lnei[j].second;
+                                }
                             }
                         }
                         break;
@@ -6466,37 +8767,12 @@ void Graph::IncreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
                 }
             }
 
-            if(algoChoice==H2H){
-                //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
-                if(Tree[rank[ProIDM]].FN[cidH]){
-                    influence=true;
-                    //higher than Cid
-                    for(int i=0;i<cidH;i++){
-                        if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[CidM]].dis[i]){
-                            Tree[rank[ProIDM]].cnt[i]-=1;
-                        }
-                    }
-
-                    //equal to Cid
-                    Tree[rank[ProIDM]].FN[cidH]=false;
-                    Tree[rank[ProIDM]].cnt[cidH]-=1;
-
-                    //lower than Cid
-                    for(int i=cidH+1;i<Tree[rank[ProIDM]].dis.size();i++){
-                        if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[IDMap[line[i]]]].dis[cidH]){
-                            Tree[rank[ProIDM]].cnt[i]-=1;
-                        }
-                    }
-                }
-            }
-
-
             //get the new value of shortcut
             //	cout<<Cw<<" increase to ";
-            Cw=INF; int countwt=0;
+            int newCw=INF; int countwt=0;
             for(auto it2=Neighbors[ProID].begin();it2!=Neighbors[ProID].end();++it2){
                 if(it2->first==Cid){
-                    Cw=it2->second;//the weight value in the original graph
+                    newCw=it2->second;//the weight value in the original graph
                     countwt=1;
                     break;
                 }
@@ -6525,10 +8801,10 @@ void Graph::IncreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
                         }
                     }
 
-                    if(ssw+wtt<Cw){
-                        Cw=ssw+wtt;
+                    if(ssw+wtt<newCw){
+                        newCw=ssw+wtt;
                         countwt=1;
-                    }else if(ssw+wtt==Cw){
+                    }else if(ssw+wtt==newCw){
                         countwt+=1;
                     }
                 }
@@ -6538,11 +8814,41 @@ void Graph::IncreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
             //refresh the shortcut to the new value
             for(int i=0;i<Tree[rank[ProIDM]].vert.size();i++){
                 if(Tree[rank[ProIDM]].vert[i].first==Cid){
-                    Tree[rank[ProIDM]].vert[i].second.first=Cw;
+                    Tree[rank[ProIDM]].vert[i].second.first=newCw;
                     Tree[rank[ProIDM]].vert[i].second.second=countwt;
                     break;
                 }
             }
+
+            if(algoChoice==H2H){
+                if(newCw>Cw){
+                    //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
+                    if(Tree[rank[ProIDM]].FN[cidH]){
+                        influence=true;
+                        //higher than Cid
+                        for(int i=0;i<cidH;i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[CidM]].dis[i]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+
+                        //equal to Cid
+                        Tree[rank[ProIDM]].FN[cidH]=false;
+                        Tree[rank[ProIDM]].cnt[cidH]-=1;
+
+                        //lower than Cid
+                        for(int i=cidH+1;i<Tree[rank[ProIDM]].dis.size();i++){
+                            if(Tree[rank[ProIDM]].dis[i]==Cw+Tree[rank[IDMap[line[i]]]].dis[cidH]){
+                                Tree[rank[ProIDM]].cnt[i]-=1;
+                            }
+                        }
+                    }
+                }
+
+            }
+
+
+
         }
 
         if(influence){
@@ -6551,7 +8857,7 @@ void Graph::IncreasePartiBatchPre(int pid, vector<pair<pair<int,int>,pair<int,in
             int rnew=rank[IDMap[ProID]],r;
             for(int i=0;i<ProBeginVertexSetParti[pid].size();i++){
                 r=rank[IDMap[ProBeginVertexSetParti[pid][i]]];
-                if(LCAQueryOverlay(rnew,r)!=rnew){
+                if(LCAQueryPartition(rnew,r,pid)!=rnew){
                     ProBeginVertexSetNew.push_back(ProBeginVertexSetParti[pid][i]);
                 }
             }
@@ -6673,4 +8979,168 @@ int Graph::ShortcutDisCheck(int ID1, int ID2){
         cout<<"Not found! "<<endl; exit(1);
     }
     return d;
+}
+
+void Graph::VertexInsertPartiBatchUpdateCH(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
+    int a,b,oldW,newW;
+    for(int i=0;i<wBatch.size();++i){
+        a=wBatch[i].first.first; b=wBatch[i].first.second;
+        oldW=wBatch[i].second.first; newW=wBatch[i].second.second;
+//        cout<<a<<" "<<b<<" "<<oldW<<" "<<newW<<endl;
+        // label inherit
+        Node node;
+        node.uniqueVertex=a;
+        int bRank=ranks[pid][IDMap[b]];
+//        cout<<Trees[pid][bRank].uniqueVertex<<"("<<Trees[pid][bRank].height<<"):";
+//        for(int j=0;j<Trees[pid][bRank].vAncestor.size();++j){
+//            cout<<" "<<Trees[pid][bRank].vAncestor[j]<<"("<<Trees[pid][bRank].dis[j]<<")";
+//        }
+//        cout<<endl;
+        node.pa=bRank;
+        node.height=Trees[pid][bRank].height+1;
+        node.hdepth=node.hdepth;
+        if(node.height>heightMaxs[pid]){
+            heightMaxs[pid]=node.height;
+        }
+        node.vert.emplace_back(b,make_pair(newW,1));
+
+        ranks[pid].push_back(Trees[pid].size());
+        Trees[pid][bRank].ch.push_back(Trees[pid].size());
+        Trees[pid].emplace_back(node);
+//        int aRank=ranks[pid][IDMap[a]];
+//        cout<<Trees[pid][aRank].uniqueVertex<<"("<<Trees[pid][aRank].height<<"):";
+//        for(int j=0;j<Trees[pid][aRank].vAncestor.size();++j){
+//            cout<<" "<<Trees[pid][aRank].vAncestor[j]<<"("<<Trees[pid][aRank].dis[j]<<")";
+//        }
+//        cout<<endl;
+//        for(int j=0;j<Trees[pid][aRank].pos.size();++j){
+//            cout<<Trees[pid][aRank].pos[j]<<" ";
+//        }
+//        cout<<endl;
+        if(PSPStrategy>=PostBoundary){
+            Node node;
+            node.uniqueVertex=a;
+            int bRank=ranksPost[pid][IDMap[b]];
+            node.pa=bRank;
+            node.height=TreesPost[pid][bRank].height+1;
+            node.hdepth=node.hdepth;
+            if(node.height>heightMaxsPost[pid]){
+                heightMaxsPost[pid]=node.height;
+            }
+            node.vert.emplace_back(b,make_pair(newW,1));
+            for(int j=0;j<TreesPost[pid][bRank].dis.size();++j){
+                node.dis.push_back(TreesPost[pid][bRank].dis[j]+newW);
+            }
+            node.dis.push_back(newW);
+            node.cnt=TreesPost[pid][bRank].cnt;
+            node.cnt.push_back(1);
+            node.vAncestor=TreesPost[pid][bRank].vAncestor;
+            node.pos.push_back(node.vAncestor.size());
+            node.vAncestor.push_back(b);
+            node.pos.push_back(node.vAncestor.size());
+            node.FN.assign(TreesPost[pid][bRank].FN.size(),false);
+            node.FN.push_back(true);
+
+            ranksPost[pid].push_back(TreesPost[pid].size());
+            TreesPost[pid][bRank].ch.push_back(TreesPost[pid].size());
+            TreesPost[pid].emplace_back(node);
+        }
+    }
+//    cout<<"LCA index rebuild."<<endl;
+    RMQIndexs[pid].clear();
+    toRMQs[pid].clear();
+    makeRMQCoreP(pid, toRMQs, RMQIndexs, Trees);
+    if(PSPStrategy>=PostBoundary){
+        RMQIndexsPost[pid].clear();
+        toRMQsPost[pid].clear();
+        makeRMQCoreP(pid, toRMQsPost, RMQIndexsPost, TreesPost);
+    }
+}
+
+void Graph::VertexInsertPartiBatchUpdateH2H(int pid, vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
+    int a,b,oldW,newW;
+    for(int i=0;i<wBatch.size();++i){
+        a=wBatch[i].first.first; b=wBatch[i].first.second;
+        oldW=wBatch[i].second.first; newW=wBatch[i].second.second;
+//        cout<<a<<" "<<b<<" "<<oldW<<" "<<newW<<endl;
+        // label inherit
+        Node node;
+        node.uniqueVertex=a;
+        int bRank=ranks[pid][IDMap[b]];
+//        cout<<Trees[pid][bRank].uniqueVertex<<"("<<Trees[pid][bRank].height<<"):";
+//        for(int j=0;j<Trees[pid][bRank].vAncestor.size();++j){
+//            cout<<" "<<Trees[pid][bRank].vAncestor[j]<<"("<<Trees[pid][bRank].dis[j]<<")";
+//        }
+//        cout<<endl;
+        node.pa=bRank;
+        node.height=Trees[pid][bRank].height+1;
+        node.hdepth=node.hdepth;
+        if(node.height>heightMaxs[pid]){
+            heightMaxs[pid]=node.height;
+        }
+        node.vert.emplace_back(b,make_pair(newW,1));
+        for(int j=0;j<Trees[pid][bRank].dis.size();++j){
+            node.dis.push_back(Trees[pid][bRank].dis[j]+newW);
+        }
+        node.dis.push_back(newW);
+        node.cnt=Trees[pid][bRank].cnt;
+        node.cnt.push_back(1);
+        node.vAncestor=Trees[pid][bRank].vAncestor;
+        node.pos.push_back(node.vAncestor.size());
+        node.vAncestor.push_back(b);
+        node.pos.push_back(node.vAncestor.size());
+        node.FN.assign(Trees[pid][bRank].FN.size(),false);
+        node.FN.push_back(true);
+
+        ranks[pid].push_back(Trees[pid].size());
+        Trees[pid][bRank].ch.push_back(Trees[pid].size());
+        Trees[pid].emplace_back(node);
+//        int aRank=ranks[pid][IDMap[a]];
+//        cout<<Trees[pid][aRank].uniqueVertex<<"("<<Trees[pid][aRank].height<<"):";
+//        for(int j=0;j<Trees[pid][aRank].vAncestor.size();++j){
+//            cout<<" "<<Trees[pid][aRank].vAncestor[j]<<"("<<Trees[pid][aRank].dis[j]<<")";
+//        }
+//        cout<<endl;
+//        for(int j=0;j<Trees[pid][aRank].pos.size();++j){
+//            cout<<Trees[pid][aRank].pos[j]<<" ";
+//        }
+//        cout<<endl;
+        if(PSPStrategy>=PostBoundary){
+            Node node;
+            node.uniqueVertex=a;
+            int bRank=ranksPost[pid][IDMap[b]];
+            node.pa=bRank;
+            node.height=TreesPost[pid][bRank].height+1;
+            node.hdepth=node.hdepth;
+            if(node.height>heightMaxsPost[pid]){
+                heightMaxsPost[pid]=node.height;
+            }
+            node.vert.emplace_back(b,make_pair(newW,1));
+            for(int j=0;j<TreesPost[pid][bRank].dis.size();++j){
+                node.dis.push_back(TreesPost[pid][bRank].dis[j]+newW);
+            }
+            node.dis.push_back(newW);
+            node.cnt=TreesPost[pid][bRank].cnt;
+            node.cnt.push_back(1);
+            node.vAncestor=TreesPost[pid][bRank].vAncestor;
+            node.pos.push_back(node.vAncestor.size());
+            node.vAncestor.push_back(b);
+            node.pos.push_back(node.vAncestor.size());
+            node.FN.assign(TreesPost[pid][bRank].FN.size(),false);
+            node.FN.push_back(true);
+
+            ranksPost[pid].push_back(TreesPost[pid].size());
+            TreesPost[pid][bRank].ch.push_back(TreesPost[pid].size());
+            TreesPost[pid].emplace_back(node);
+        }
+    }
+//    cout<<"LCA index rebuild."<<endl;
+    RMQIndexs[pid].clear();
+    toRMQs[pid].clear();
+    makeRMQCoreP(pid, toRMQs, RMQIndexs, Trees);
+    if(PSPStrategy>=PostBoundary){
+        RMQIndexsPost[pid].clear();
+        toRMQsPost[pid].clear();
+        makeRMQCoreP(pid, toRMQsPost, RMQIndexsPost, TreesPost);
+    }
 }

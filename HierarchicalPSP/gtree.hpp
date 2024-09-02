@@ -51,12 +51,13 @@ void Gtree::options_setting(){
     options[METIS_OPTION_PTYPE] = METIS_PTYPE_KWAY; // Multilevel k-way partitioning
     options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT; // Edge-cut minimization
     options[METIS_OPTION_CTYPE] = METIS_CTYPE_SHEM; // Sorted heavy-edge matching
-    options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_GROW; // Computes a bisection at random followed by a refinement METIS_IPTYPE_RANDOM
+//    options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_RANDOM; // Computes a bisection at random followed by a refinement METIS_IPTYPE_RANDOM, old, seems to be wrong
+    options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_GROW; // Computes a bisection at random followed by a refinement METIS_IPTYPE_RANDOM, new
     options[METIS_OPTION_RTYPE] = METIS_RTYPE_FM; // FM-based cut refinement
     // options[METIS_OPTION_NCUTS] = 1; // the number of different partitionings that it will compute.
     // options[METIS_OPTION_NITER] = 10; // the number of iterations for the refinement algorithms at each stage of the uncoarsening process.
     /* balance factor, used to be 500 */
-//	options[METIS_OPTION_UFACTOR] = 5;//500; // Specifies the maximum allowed load imbalance among the partitions. default value is 30
+	options[METIS_OPTION_UFACTOR] = 500; // Specifies the maximum allowed load imbalance among the partitions. old
     // options[METIS_OPTION_MINCONN];
     options[METIS_OPTION_CONTIG] = 1; // the partitioning routines should try to produce partitions that are contiguous
     // options[METIS_OPTION_SEED];
@@ -143,7 +144,9 @@ void Gtree::ReadGraph_W() {
 
     string r_file = string(DataPath)  + "/" + dataset + "/" + dataset;
 //    r_file = string(DataPath)  + dataset + "/" + dataset + ".original";
-
+    if(percentScale!=0){
+        r_file = string(DataPath)  + "/" + dataset + "/" + dataset+"_"+ to_string(percentScale);
+    }
     ifstream inFile(r_file, ios::in);
     if (!inFile) { // if not exist
         cout << "Fail to open file" << r_file << endl;
@@ -151,14 +154,14 @@ void Gtree::ReadGraph_W() {
     }
 
     /// read graph and recording the degree of vertices
-    cout << dataset<<" graph edges Data loading..." << endl;
+    cout << dataset<<" graph edges Data loading... " <<r_file<< endl;
     inFile >> node_num >> edge_num;
 
     cout<<"Leaf node maximum size: "<<LEAF_CAP<<endl;
     Nodes.resize(node_num);
     while (inFile) {//read each line
         inFile >> ID1 >> ID2 >> weight;
-//        inFile >> ID1 >> ID2;
+//        inFile >> ID1 >> ID2;//for yehong
         assert(weight > 0);
         if(dataset != "FRIEND"){
             Nodes[ID1].adjnodes.push_back( ID2 );
@@ -404,6 +407,15 @@ void Gtree::build(){
         }
 
     }
+
+    //    cout<<"leaf node number: "<<leaf_nodes.size()<<endl;
+    leaf_nodes.clear();
+    for(int i=0;i<GTree.size();++i){
+        if(GTree[i].isleaf){
+            leaf_nodes.push_back(i);
+        }
+    }
+    cout<<"leaf node number: "<<leaf_nodes.size()<<endl;
 
     //For direct query processing
 //    for ( int i = 0; i < Nodes.size(); i++ ){
@@ -700,7 +712,7 @@ void Gtree::load_gtree(string filename, string filename2) {
         cout << "Failed to open file " << filename << endl;
         exit(1);
     }
-    cout << "Loading G-tree... ";
+    cout << "Loading G-tree... "<<filename<<endl;
     int *buf;
     int count_borders, count_children, count_leafnodes;
     bool isleaf;
@@ -749,6 +761,20 @@ void Gtree::load_gtree(string filename, string filename2) {
         tn.father = father;
 
         GTree.push_back(tn);
+
+        // G*-tree
+        if (tn.isleaf) {
+            leaf_nodes.push_back(node_count);
+        }
+
+        int i = node_count;
+
+        GTree[i].is_cached = false;
+        int j = i, father;
+        while ((father = GTree[j].father) > 0) j = father;
+        GTree[i].cacheB.resize(GTree[j].borders.size(), vector<int>(GTree[i].borders.size(), 0));
+
+        ++node_count;
     }
     fclose(fin);
 
@@ -769,6 +795,7 @@ void Gtree::load_gtree(string filename, string filename2) {
         cout << "Failed to open file " << filename2 << endl;
         exit(1);
     }
+    cout << "Loading G-tree... "<<filename2<<endl;
     int pos = 0;
     while (fread(&count, sizeof(int), 1, fin)) {
         buf = new int[count];
@@ -818,7 +845,7 @@ void Gtree::build_up_and_down_pos() {
 // input: s = source node
 //        cands = candidate node list
 //        graph = search graph(this can be set to subgraph)
-/*vector<int> Gtree::dijkstra_candidate( int s, vector<int> &cands, vector<Node> &graph ){
+vector<int> Gtree::dijkstra_candidate( int s, vector<int> &cands, vector<Node> &graph ){
     // init
     set<int> todo;
     todo.clear();
@@ -887,76 +914,11 @@ void Gtree::build_up_and_down_pos() {
 
     // return
     return output;//vector of distance matrix values
-}*/
+}
 
-// heap-based dijkstra search, used for single-source shortest path search WITHIN one gtree leaf node!
-// input: s = source node
-//        cands = candidate node list
-//        graph = search graph(this can be set to subgraph)
-// output: the distance vector from s to all borders
-/*vector<int> Gtree::dijkstra_candidate( int s, vector<int> &cands, vector<Node> &graph ){
-    // init
-    set<int> todo;
-    todo.clear();
-    todo.insert(cands.begin(), cands.end());//get the partition vertex set
-
-    unordered_map<int,int> result;
-    result.clear();
-    set<int> visited;
-    visited.clear();
-//    unordered_map<int,int> q;//map used for mapping vertex id to its distance from source vertex
-    benchmark::heap<2, int, int> q(node_num);
-//    vector<bool> closed(node_num, false); //flag vector of whether closed
-    vector<Distance> cost(node_num, INF);   //vector of cost
-    int temp_dis;
-    q.clear();
-    q.update(s,0);
-    cost[s] = 0;
-//    q[s] = 0;//map of source vertex
-
-    // start
-    int min, minpos, adjnode, weight;
-    while( ! todo.empty() && ! q.empty() ){
-        min = -1;
-        q.extract_min(minpos,min);
-
-        // put min to result, add to visited
-        result[minpos] = min;
-        visited.insert( minpos );
-//        q.erase(minpos);
-
-        if ( todo.find( minpos ) != todo.end() ){//if found, erase visited vertex
-            todo.erase( minpos );
-        }
-
-        // expand on graph (the original graph)
-        for ( int i = 0; i < graph[minpos].adjnodes.size(); i++ ){
-            adjnode = graph[minpos].adjnodes[i];
-            if ( visited.find( adjnode ) != visited.end() ){//if found, ie, it is visited
-                continue;
-            }
-            weight = graph[minpos].adjweight[i];//edge weight
-            temp_dis = min + weight;
-            if ( temp_dis < cost[adjnode] ){
-                q.update(adjnode,temp_dis);
-                cost[adjnode] = temp_dis;
-            }
-
-        }
-    }
-
-    // output
-    vector<int> output;
-    for ( int i = 0; i < cands.size(); i++ ){
-        output.push_back( result[cands[i]] );//only push the distance result of vertex in cands
-    }
-
-    // return
-    return output;//vector of distance matrix values
-}*/
 
 //priority queue of std
-vector<int> Gtree::dijkstra_candidate( int s, vector<int> &cands, vector<Node> &graph ){
+/*vector<int> Gtree::dijkstra_candidate( int s, vector<int> &cands, vector<Node> &graph ){
     // init
     set<int> todo;
     todo.clear();
@@ -1037,7 +999,8 @@ vector<int> Gtree::dijkstra_candidate( int s, vector<int> &cands, vector<Node> &
 
     // return
     return output;//vector of distance matrix values
-}
+}*/
+
 // calculate the distance matrix, algorithm shown in section 5.2 of paper
 void Gtree::hierarchy_shortest_path_calculation(bool ifParallel){
     // level traversal
@@ -1639,7 +1602,7 @@ void Gtree::load_minds(string filename){
         cout << "Failed to open file " << filename << endl;
         exit(1);
     }
-    cout << "Loading distance matrix... ";
+    cout << "Loading distance matrix... "<<filename<<endl;
     int* buf;
     int count, pos = 0;
     while( fread( &count, sizeof(int), 1, fin ) ){
@@ -1694,7 +1657,7 @@ void Gtree::load_minds(string filename){
 //    }
 //    fclose(fin);
 //    delete[] buf;
-    cout << "Done." << endl;
+//    cout << "Done." << endl;
 }
 
 
@@ -1722,7 +1685,7 @@ int Gtree::gtree_build(bool ifParallel){
     // dump gtree
 //    cout << "Saving G-tree..."<<endl;
     gtree_save(dirname+"/"+FILE_GTREE,dirname+"/"+FILE_NODES_GTREE_PATH);
-//    gtree_save_txt();
+//    gtree_save_txt();//for yehong
 //    cout <<"Done."<<endl;
 //    exit(0);
     // calculate distance matrix
@@ -1899,6 +1862,7 @@ void Gtree::ReadUpdates(string filename, vector<pair<pair<int,int>,int>>& update
         cout << "Fail to open file" << filename << endl;
         exit(1);
     }
+    cout<<"Update file: "<<filename<<endl;
     int num;
     inFile >> num;
     for(int i=0;i<num;i++){
@@ -1946,7 +1910,7 @@ void Gtree::init_borders(){
 void Gtree::init_query(vector<TreeNode> & GTree) {
     for (auto &tn: GTree) {
         //tn.oclist.clear();
-        tn.cache_q = vector<int>(tn.borders.size(), 0);
+        tn.cache = vector<int>(tn.borders.size(), 0);
         tn.is_visited = false;
     }
 }
@@ -3158,6 +3122,7 @@ void Gtree::GtreeIndexUpdate(vector<pair<pair<int,int>,pair<int,int> > > & updat
 //    cout<<"The time used for updating: "<<tt.GetRuntime()<<" s."<<endl;
 //    ave_time += tt.GetRuntime();
 
+
 }
 
 //function of dealing with batch edge increase update of G-tree
@@ -4132,7 +4097,7 @@ int Gtree::ComputeDisByTree(int src, int dst, vector<TreeNode> & GTree) {
     auto num_border_nt = GTree[Nt].borders.size();
     auto num_leafnode_nt = GTree[Nt].leafnodes.size();
 
-    //initiate cache_q and is_visited of each tree node
+    //initiate cache and is_visited of each tree node
     init_query(GTree);
 
     // Find LCA index in gtreepath
@@ -4141,7 +4106,7 @@ int Gtree::ComputeDisByTree(int src, int dst, vector<TreeNode> & GTree) {
     // Step out of leaf node Ns
     for (int i = 0; i < num_border_ns; ++i) {
 //        cout << i*num_leafnode_ns+posa << " "<<GTree[Ns].mind.size() << endl;
-        GTree[Ns].cache_q[i] = GTree[Ns].mind[i * num_leafnode_ns + posa];//store the distance from all borders to s
+        GTree[Ns].cache[i] = GTree[Ns].mind[i * num_leafnode_ns + posa];//store the distance from all borders to s
     }
 
     // Init some variables
@@ -4151,7 +4116,7 @@ int Gtree::ComputeDisByTree(int src, int dst, vector<TreeNode> & GTree) {
     unsigned long union_border_size;
 
     // Step out of nodes until meeting LCA
-    // The cache_q of each node 'tn' stores the distance from vertex src to node tn's child then to tn
+    // The cache of each node 'tn' stores the distance from vertex src to node tn's child then to tn
     for (auto i = up_path.size() - 2; i >= LCA_pos + 1; --i) {
         tn = up_path[i];
         cn = up_path[i + 1];  // child node
@@ -4161,17 +4126,17 @@ int Gtree::ComputeDisByTree(int src, int dst, vector<TreeNode> & GTree) {
             posx = GTree[tn].current_pos[j];//get the position id of tn's borders in this node
             for (int k = 0; k < GTree[cn].borders.size(); k++) {
                 posy = GTree[cn].up_pos[k];//get the position id of cn's borders in the parent node
-                dist = GTree[cn].cache_q[k] + GTree[tn].mind[posx * union_border_size + posy];
+                dist = GTree[cn].cache[k] + GTree[tn].mind[posx * union_border_size + posy];
                 if (dist < min) {
                     min = dist;
                 }
             }
-            GTree[tn].cache_q[j] = min;//update the distance from the borders to its children's borders
+            GTree[tn].cache[j] = min;//update the distance from the borders to its children's borders
         }
     }
 
     // Step across LCA (from one branch to another)
-    // The cache_q of Nt's top ancestor node 'nt_top' stores the distance
+    // The cache of Nt's top ancestor node 'nt_top' stores the distance
     // from vertex src to Ns's top ancestor 'ns_top' node then to 'nt_top'
 //    cout<<"LCA"<<endl;
     int ns_top = up_path[LCA_pos + 1];
@@ -4184,18 +4149,18 @@ int Gtree::ComputeDisByTree(int src, int dst, vector<TreeNode> & GTree) {
         nt_top_up_pos = GTree[nt_top].up_pos[i];//the position id in parent node (LCA)
         for (int j = 0; j < GTree[ns_top].borders.size(); j++) {
             ns_top_up_pos = GTree[ns_top].up_pos[j];//the position id in parent node (LCA)
-//            dist = GTree[ns_top].cache_q[i] + GTree[lca_node].mind[nt_top_up_pos * union_border_size + ns_top_up_pos];
-            dist = GTree[ns_top].cache_q[j] + GTree[lca_node].mind[nt_top_up_pos * union_border_size + ns_top_up_pos];
+//            dist = GTree[ns_top].cache[i] + GTree[lca_node].mind[nt_top_up_pos * union_border_size + ns_top_up_pos];
+            dist = GTree[ns_top].cache[j] + GTree[lca_node].mind[nt_top_up_pos * union_border_size + ns_top_up_pos];
             if (dist < min) {
                 min = dist;
             }
         }
-        GTree[nt_top].cache_q[i] = min;
+        GTree[nt_top].cache[i] = min;
     }
 
 
     // Step into nodes until meeting Nt
-    // The cache_q of each node 'tn' stores the distance from vertex src to node tn's parent then to tn
+    // The cache of each node 'tn' stores the distance from vertex src to node tn's parent then to tn
     for (auto i = LCA_pos + 2; i < down_path.size(); ++i) {
         tn = down_path[i];
         cn = down_path[i - 1];   // parent node
@@ -4205,19 +4170,19 @@ int Gtree::ComputeDisByTree(int src, int dst, vector<TreeNode> & GTree) {
             posx = GTree[tn].up_pos[j];
             for (int k = 0; k < GTree[cn].borders.size(); k++) {
                 posy = GTree[cn].current_pos[k];
-                dist = GTree[cn].cache_q[k] + GTree[cn].mind[posy * union_border_size + posx];
+                dist = GTree[cn].cache[k] + GTree[cn].mind[posy * union_border_size + posx];
                 if (dist < min) {
                     min = dist;
                 }
             }
             // update
-            GTree[tn].cache_q[j] = min;
+            GTree[tn].cache[j] = min;
         }
     }
     // Step into the leaf node Nt
     min = INT_MAX;
     for (int i = 0; i < num_border_nt; ++i) {
-        dist = GTree[Nt].cache_q[i] + GTree[Nt].mind[i * num_leafnode_nt + posb];
+        dist = GTree[Nt].cache[i] + GTree[Nt].mind[i * num_leafnode_nt + posb];
         if (dist < min) {
             min = dist;
         }
@@ -4338,8 +4303,8 @@ int Gtree::Distance_query(int src, int dst) {
     // Step out of leaf node Ns
     for (int i = 0; i < num_border_ns; ++i) {
 //        cout << i*num_leafnode_ns+posa << " "<<GTree[Ns].mind.size() << endl;
-        GTree[Ns].cache_q[i] = GTree[Ns].mind[i * num_leafnode_ns + posa];//store the distance from all borders to s
-//        cout << src << " "<< GTree[Ns].borders[i] << " " << GTree[Ns].cache_q[i] << " " << Dijkstra(src,GTree[Ns].borders[i]) << endl;
+        GTree[Ns].cache[i] = GTree[Ns].mind[i * num_leafnode_ns + posa];//store the distance from all borders to s
+//        cout << src << " "<< GTree[Ns].borders[i] << " " << GTree[Ns].cache[i] << " " << Dijkstra(src,GTree[Ns].borders[i]) << endl;
     }
 
     // Init some variables
@@ -4349,7 +4314,7 @@ int Gtree::Distance_query(int src, int dst) {
     unsigned long union_border_size;
 
     // Step out of nodes until meeting LCA
-    // The cache_q of each node 'tn' stores the distance from vertex src to node tn's child then to tn
+    // The cache of each node 'tn' stores the distance from vertex src to node tn's child then to tn
     TIME_TICK_START
     for (auto i = up_path.size() - 2; i >= LCA_pos + 1; --i) {
         tn = up_path[i];
@@ -4360,16 +4325,16 @@ int Gtree::Distance_query(int src, int dst) {
             posx = GTree[tn].current_pos[j];//get the position id of tn's borders in this node
             for (int k = 0; k < GTree[cn].borders.size(); k++) {
                 posy = GTree[cn].up_pos[k];//get the position id of cn's borders in the parent node
-                dist = GTree[cn].cache_q[k] + GTree[tn].mind[posx * union_border_size + posy];
+                dist = GTree[cn].cache[k] + GTree[tn].mind[posx * union_border_size + posy];
                 if (dist < min) {
                     min = dist;
                 }
             }
-            GTree[tn].cache_q[j] = min;//update the distance from the borders to its children's borders
+            GTree[tn].cache[j] = min;//update the distance from the borders to its children's borders
 //            if(ifDebug){
 //                int temp_dis = Dijkstra(src,GTree[tn].borders[j],Nodes);
-//                if(temp_dis != GTree[tn].cache_q[j]){
-//                    cout << "Branch of s incorrect: " <<src << " "<< GTree[tn].borders[j] << " " << GTree[tn].cache_q[j] << " " << temp_dis << endl;
+//                if(temp_dis != GTree[tn].cache[j]){
+//                    cout << "Branch of s incorrect: " <<src << " "<< GTree[tn].borders[j] << " " << GTree[tn].cache[j] << " " << temp_dis << endl;
 //                }
 //            }
 
@@ -4378,7 +4343,7 @@ int Gtree::Distance_query(int src, int dst) {
 
 
     // Step across LCA (from one branch to another)
-    // The cache_q of Nt's top ancestor node 'nt_top' stores the distance
+    // The cache of Nt's top ancestor node 'nt_top' stores the distance
     // from vertex src to Ns's top ancestor 'ns_top' node then to 'nt_top'
 //    cout<<"LCA"<<endl;
     int ns_top = up_path[LCA_pos + 1];
@@ -4391,17 +4356,17 @@ int Gtree::Distance_query(int src, int dst) {
         nt_top_up_pos = GTree[nt_top].up_pos[i];//the position id in parent node (LCA)
         for (int j = 0; j < GTree[ns_top].borders.size(); j++) {
             ns_top_up_pos = GTree[ns_top].up_pos[j];//the position id in parent node (LCA)
-//            dist = GTree[ns_top].cache_q[i] + GTree[lca_node].mind[nt_top_up_pos * union_border_size + ns_top_up_pos];
-            dist = GTree[ns_top].cache_q[j] + GTree[lca_node].mind[nt_top_up_pos * union_border_size + ns_top_up_pos];
+//            dist = GTree[ns_top].cache[i] + GTree[lca_node].mind[nt_top_up_pos * union_border_size + ns_top_up_pos];
+            dist = GTree[ns_top].cache[j] + GTree[lca_node].mind[nt_top_up_pos * union_border_size + ns_top_up_pos];
             if (dist < min) {
                 min = dist;
             }
         }
-        GTree[nt_top].cache_q[i] = min;
+        GTree[nt_top].cache[i] = min;
 //        if(ifDebug){
 //            int temp_dis = Dijkstra(src,GTree[nt_top].borders[i],Nodes);
-//            if(temp_dis != GTree[nt_top].cache_q[i]){
-//                cout << "Step across LCA incorrect: " <<src << " "<< GTree[nt_top].borders[i] << " " << GTree[nt_top].cache_q[i] << " " << temp_dis << endl;
+//            if(temp_dis != GTree[nt_top].cache[i]){
+//                cout << "Step across LCA incorrect: " <<src << " "<< GTree[nt_top].borders[i] << " " << GTree[nt_top].cache[i] << " " << temp_dis << endl;
 //            }
 //        }
 
@@ -4409,7 +4374,7 @@ int Gtree::Distance_query(int src, int dst) {
 
 
     // Step into nodes until meeting Nt
-    // The cache_q of each node 'tn' stores the distance from vertex src to node tn's parent then to tn
+    // The cache of each node 'tn' stores the distance from vertex src to node tn's parent then to tn
     for (auto i = LCA_pos + 2; i < down_path.size(); ++i) {
         tn = down_path[i];
         cn = down_path[i - 1];   // parent node
@@ -4419,17 +4384,17 @@ int Gtree::Distance_query(int src, int dst) {
             posx = GTree[tn].up_pos[j];
             for (int k = 0; k < GTree[cn].borders.size(); k++) {
                 posy = GTree[cn].current_pos[k];
-                dist = GTree[cn].cache_q[k] + GTree[cn].mind[posy * union_border_size + posx];
+                dist = GTree[cn].cache[k] + GTree[cn].mind[posy * union_border_size + posx];
                 if (dist < min) {
                     min = dist;
                 }
             }
             // update
-            GTree[tn].cache_q[j] = min;
+            GTree[tn].cache[j] = min;
 //            if(ifDebug){
 //                int temp_dis = Dijkstra(src,GTree[tn].borders[j],Nodes);
-//                if(temp_dis != GTree[tn].cache_q[j]){
-//                    cout << "Branch of t incorrect: " << src << " "<< GTree[tn].borders[j] << " " << GTree[tn].cache_q[j] << " " << temp_dis << endl;
+//                if(temp_dis != GTree[tn].cache[j]){
+//                    cout << "Branch of t incorrect: " << src << " "<< GTree[tn].borders[j] << " " << GTree[tn].cache[j] << " " << temp_dis << endl;
 //                }
 //            }
 
@@ -4439,7 +4404,7 @@ int Gtree::Distance_query(int src, int dst) {
     // Step into the leaf node Nt
     min = INT_MAX;
     for (int i = 0; i < num_border_nt; ++i) {
-        dist = GTree[Nt].cache_q[i] + GTree[Nt].mind[i * num_leafnode_nt + posb];
+        dist = GTree[Nt].cache[i] + GTree[Nt].mind[i * num_leafnode_nt + posb];
         if (dist < min) {
             min = dist;
         }

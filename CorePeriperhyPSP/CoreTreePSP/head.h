@@ -263,6 +263,7 @@ public:
     vector<vector<int>> RMQIndex;//?
 
     vector<int> tRoots;//root vertex id of trees
+    map<int,map<int,int>> boundaryAllPairDis;
 
     ~Graph(){
         clear();
@@ -443,7 +444,7 @@ public:
 	void Decrease(int a, int b, int oldW, int newW);
 	void Increase(int a, int b, int oldW, int newW);
 
-    void QueryGenerationSameParti();
+    void QueryGenerationSameParti(string filename);
     void ODGeneSameParti(int num, string filename);
 
     void DecreasePSL(int a, int b, int oldW, int newW, vector<vector<pair<vertex,int>>> &Neighbors,vector<unordered_map<vertex,int>> &Label);

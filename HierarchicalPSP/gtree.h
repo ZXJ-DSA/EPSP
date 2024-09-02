@@ -80,7 +80,7 @@ typedef struct{
     vector<int> adjnodes;   //adjacent vertex
     vector<int> adjweight;  //edge weight
     bool isborder;          //if border
-    vector<int> gtreepath; // this is used to do sub-graph locating
+    vector<int> gtreepath; // store the tree node ID that this vertex exists, from higher-level tree node to lower-level nodes, this is used to do sub-graph locating
     /// for G*-Tree
     int deep;//the number of levels from its leaf node to root node
     int inleaf;//the leaf node that it locates at
@@ -103,13 +103,13 @@ typedef struct{
     vector<int> current_pos;    // the position IDs of the borders of this tree node
 /// for G*-Tree
 // ----- for caching distances
-    vector<vector<int>> cache;//store the distances from the borders of lca node to the borders of this node, dimension 1 is lca node
-    bool is_cached;
+    vector<vector<int>> cacheB;//store the distances from the borders of lca node to the borders of this node, dimension 1 is lca node, for shortcut construction
+    bool is_cached;//whether the distances among this tree node's boundary vertices have been stored
 // ----- for knn and range query-----
     unordered_set<int> oclist;
     bool is_visited;
 // ----- for caching distances
-    vector<int> cache_q;
+    vector<int> cache;//for query processing
 }TreeNode;
 
 // init status struct
@@ -154,6 +154,8 @@ public:
     int top_level = 1;
 //    bool ifDebug = false;//
     string dirname;//intermediate file directory
+    vector<int> leaf_nodes;
+    int percentScale=0;
 
 //    // use for metis
 ////idx_t = int64_t / real_t = double

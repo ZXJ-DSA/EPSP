@@ -92,7 +92,7 @@ void Graph::CTIndexConstructCH(){
     IndexsizeCTCH();//index (labeling+pruning point) size computation
 }
 
-void Graph::QueryGenerationSameParti(){
+void Graph::QueryGenerationSameParti(string filename){
 
     Construct_tree(true);
 //#ifdef __APPLE__
@@ -102,7 +102,7 @@ void Graph::QueryGenerationSameParti(){
 //    ODGeneSameParti(10000,"/home/data/xzhouby/datasets/"+dataset+"/"+dataset+".querySamePartiCoreTree");//same partition
 //#endif
 
-    ODGeneSameParti(10000,sourcePath+"tmp/"+dataset+"_sameParti_CT"+ to_string(bandWidth)+".query");//same partition
+    ODGeneSameParti(10000,filename);//same partition
 
     exit(0);
 }
@@ -1218,7 +1218,7 @@ int Graph::Query(int ID1, int ID2){
             dis= QueryPartiParti(ID1,ID2);
         }else{//Case 4: in the same periphery
 //                cout<<"Same partition!"<<endl;
-            if(strategy==PostBoundary){
+            if(strategy==PostBoundary || strategy==PreBoundary){
                 dis= QuerySameParti2(ID1,ID2);
             }else{
                 dis= QuerySameParti(ID1,ID2);

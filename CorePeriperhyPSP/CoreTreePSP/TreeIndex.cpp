@@ -795,7 +795,8 @@ void Graph::Compute_tree_label(bool ifParallel){
                     }
                 }
                 makeTreeIndexDFS2(rankRoot,ancestors,interfaces,disInfs);//query-orient version
-            }else if(strategy==NoBoundary){
+            }
+            else if(strategy==NoBoundary){
                 makeTreeIndexDFS(rankRoot,ancestors,interfaces);//original version
             }else if(strategy==PreBoundary){
                 map<int,unordered_map<int,int>> disInfs;//distance from interface vertex u to another interface vertex v
@@ -899,7 +900,34 @@ void Graph::TreeLabelCompute(pair<int,int> pidRange, vector<int> & pidRanks)
             interfaces.push_back(ID2);
         }
 
-        makeTreeIndexDFS(rankRoot,ancestors,interfaces);//original version
+
+        if(strategy==NoBoundary){
+            makeTreeIndexDFS(rankRoot,ancestors,interfaces);//original version
+        }else if(strategy==PreBoundary){
+            map<int,unordered_map<int,int>> disInfs;//distance from interface vertex u to another interface vertex v
+            for(int i=0;i<Tree[rankRoot].vert.size();++i){
+                ID1 = Tree[rankRoot].vert[i].first;
+                vector<int> IDs;
+                vector<int> Dis;
+                for(int j=i+1;j<Tree[rankRoot].vert.size();++j){
+                    ID2 = Tree[rankRoot].vert[j].first;
+                    IDs.push_back(ID2);
+                }
+                BoundaryDijkstra(ID1,IDs,Dis,Neighbor);
+                int dis;
+                for(int j=0;j<IDs.size();++j){
+                    ID2 = IDs[j]; dis = Dis[j];
+                    if(ID1 <= ID2){
+                        disInfs[ID1].insert({ID2, dis});
+                    }else{
+                        disInfs[ID2].insert({ID1, dis});
+                    }
+                }
+            }
+
+            makeTreeIndexDFS2(rankRoot,ancestors,interfaces,disInfs);//query-orient version
+        }
+
 
     }
 }

@@ -16,7 +16,7 @@ void Graph::ReadGraph(string filename){
 		cout<<"Cannot open Map "<<filename<<endl;
         exit(1);
 	}
-    cout<<"Reading graph..."<<endl;
+    cout<<"Reading graph... "<<filename<<endl;
     Timer tt;
     tt.start();
 	string line;
