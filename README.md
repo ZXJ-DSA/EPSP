@@ -1,5 +1,5 @@
 ## Introduction
-This is the source code of the VLDB 2025 paper "*A Universal Scheme for Partitioned Dynamic Shortest Path Index*" (submitted). Please refer to the paper for the algorithm details.
+This is the source code of our paper "*A Universal Scheme for Dynamic Partitioned Shortest Path Index*" (submitted to VLDB Journal). Please refer to the paper for the algorithm details.
 
 ## Algorithms
 
